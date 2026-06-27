@@ -426,7 +426,7 @@ export default function CyclonePhysics({ params, isRunning = true }) {
     let nActive = 0, nUnder = 0, nOver = 0
     for (const p of pool.current) {
       if (p.phase === 'outer' || p.phase === 'inner') nActive++
-      else if (p.phase === 'underflow_fall') nUnder++
+      else if (p.phase === 'underflow_fall' && !p.settled) nUnder++
       else if (p.phase === 'overflow_exit')  nOver++
     }
 
@@ -514,7 +514,7 @@ export default function CyclonePhysics({ params, isRunning = true }) {
 
           // Saída pelo apex → caixa coletora
           if (p.y < -coneHeight + 0.20) {
-            if (nUnder < 250 && Math.random() < 0.65) {
+            if (nUnder < 180 && Math.random() < 0.88) {
               toCar(p)
               p.phase   = 'underflow_fall'
               p.settled = false

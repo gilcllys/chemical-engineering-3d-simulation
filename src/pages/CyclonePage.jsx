@@ -108,8 +108,8 @@ export default function CyclonePage() {
         {/* ── Badge estático: Coletor de Pó ────────────────────── */}
         <div style={{
           position: 'absolute',
-          bottom: 104,
-          left: 20,
+          bottom: 24,
+          right: 20,
           zIndex: 100,
           display: 'flex',
           flexDirection: 'column',
