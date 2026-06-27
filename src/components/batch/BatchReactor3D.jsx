@@ -13,7 +13,7 @@
  *   · Cylindrical vessel + domed caps (glass / meshPhysicalMaterial)
  *   · Heating jacket (outer cylinder, orange, semi-transparent)
  *   · Agitator: shaft + 3-blade turbine impeller
- *   · 300 instanced particles: blue (#0077BB) → red (#CC3311) as X grows
+ *   · 500 instanced particles (MLS-MPM fluid): blue (#0077BB) → red (#CC3311)
  *   · Inlet / outlet nozzles
  *   · Html overlay (live X%, Ca, k values — DOM-mutated, zero re-renders)
  *
@@ -26,9 +26,10 @@ import { useRef, useMemo, useEffect } from 'react'
 import { useFrame }                   from '@react-three/fiber'
 import { Html }                       from '@react-three/drei'
 import * as THREE                     from 'three'
+import { createFluidState, stepFluid } from './batchFluid.js'
 
 // ── Constants ─────────────────────────────────────────────────────────
-const PARTICLE_COUNT = 300
+const PARTICLE_COUNT = 500
 const K0             = 0.1      // pre-exponential factor  (1/s)
 const EA_R           = 5000     // Ea / R                  (K)
 const T_REF          = 350      // reference temperature   (K)
@@ -47,10 +48,11 @@ export default function BatchReactor3D({ isRunning, params }) {
   const { temperature, initialConc, agitatorSpeed, showJacket } = params
 
   // ── Refs ──────────────────────────────────────────────────────────
-  const agitatorRef  = useRef(null)
-  const particlesRef = useRef(null)
-  const timeRef      = useRef(0)
-  const runRef       = useRef(isRunning)
+  const agitatorRef   = useRef(null)
+  const particlesRef  = useRef(null)
+  const timeRef       = useRef(0)
+  const runRef        = useRef(isRunning)
+  const fluidStateRef = useRef(null)
 
   // HTML overlay – updated via direct DOM mutation (no state / re-renders)
   const domConv = useRef(null)
@@ -59,49 +61,18 @@ export default function BatchReactor3D({ isRunning, params }) {
 
   useEffect(() => { runRef.current = isRunning }, [isRunning])
 
-  // ── Per-particle stable data (created once) ────────────────────────
-  const particles = useMemo(() => {
-    const arr = []
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      arr.push({
-        r:     0.10 + Math.random() * 0.76,
-        theta: Math.random() * Math.PI * 2,
-        baseY: (Math.random() - 0.5) * 2.3,
-        dir:   Math.random() < 0.5 ? 1 : -1,
-        spd:   0.5 + Math.random() * 0.8,
-        bx: 0, by: 0, bz: 0,
-        noise: (Math.random() - 0.5) * 0.28,
-      })
-    }
-    return arr
+  // ── Init MLS-MPM fluid state on mount ─────────────────────────────
+  useEffect(() => {
+    fluidStateRef.current = createFluidState(PARTICLE_COUNT)
   }, [])
 
   // ── Reusable scratch objects (allocated once) ──────────────────────
   const dummy = useMemo(() => new THREE.Object3D(), [])
   const _col  = useMemo(() => new THREE.Color(),    [])
 
-  // ── Seed instance matrices on first mount ──────────────────────────
-  useEffect(() => {
-    const mesh = particlesRef.current
-    if (!mesh) return
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const p = particles[i]
-      dummy.position.set(
-        Math.cos(p.theta) * p.r,
-        p.baseY,
-        Math.sin(p.theta) * p.r,
-      )
-      dummy.updateMatrix()
-      mesh.setMatrixAt(i, dummy.matrix)
-      mesh.setColorAt(i, COL_A)
-    }
-    mesh.instanceMatrix.needsUpdate = true
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-  }, [particles, dummy])
-
   // ── Animation frame ────────────────────────────────────────────────
   useFrame((_, delta) => {
-    const dt = Math.min(delta, 0.05)  // cap to 50 ms (tab-visibility guard)
+    const dt = Math.min(delta, 1 / 45)   // cap to ~22 ms (tab-visibility guard)
 
     if (runRef.current) timeRef.current += dt
 
@@ -120,40 +91,34 @@ export default function BatchReactor3D({ isRunning, params }) {
       agitatorRef.current.rotation.y += dt * agitatorSpeed
     }
 
-    // ── Particle positions + colours ─────────────────────────────────
-    const mesh = particlesRef.current
-    if (!mesh) return
+    // ── MLS-MPM fluid step + instanced mesh update ───────────────────
+    if (runRef.current && fluidStateRef.current) {
+      stepFluid(
+        fluidStateRef.current,
+        dt,
+        agitatorSpeed,
+        agitatorRef.current?.rotation.y ?? 0,
+      )
 
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const p = particles[i]
+      const mesh = particlesRef.current
+      if (!mesh) return
 
-      if (runRef.current) {
-        // Gentle orbital mixing driven by agitator speed
-        p.theta += dt * agitatorSpeed * p.spd * p.dir * 0.38
+      const pts = fluidStateRef.current.particles
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i]
+        dummy.position.set(p.x, p.y, p.z)
+        dummy.updateMatrix()
+        mesh.setMatrixAt(i, dummy.matrix)
 
-        // Brownian perturbation (clamped)
-        const B = 0.08
-        p.bx = Math.max(-B, Math.min(B, p.bx + (Math.random() - 0.5) * 0.016))
-        p.by = Math.max(-B, Math.min(B, p.by + (Math.random() - 0.5) * 0.016))
-        p.bz = Math.max(-B, Math.min(B, p.bz + (Math.random() - 0.5) * 0.016))
+        // Colour: lerp A→B based on global conversion + per-particle noise
+        const lx = Math.max(0, Math.min(1, X + p.noise))
+        _col.copy(COL_A).lerp(COL_B, lx)
+        mesh.setColorAt(i, _col)
       }
 
-      dummy.position.set(
-        Math.cos(p.theta) * p.r + p.bx,
-        p.baseY            + p.by,
-        Math.sin(p.theta) * p.r + p.bz,
-      )
-      dummy.updateMatrix()
-      mesh.setMatrixAt(i, dummy.matrix)
-
-      // Colour: lerp A→B using per-particle noisy conversion
-      const lx = Math.max(0, Math.min(1, X + p.noise))
-      _col.copy(COL_A).lerp(COL_B, lx)
-      mesh.setColorAt(i, _col)
+      mesh.instanceMatrix.needsUpdate = true
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     }
-
-    mesh.instanceMatrix.needsUpdate = true
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   })
 
   // ─────────────────────────────────────────────────────────────────
@@ -281,13 +246,13 @@ export default function BatchReactor3D({ isRunning, params }) {
         <meshStandardMaterial color="#b0bec5" metalness={0.85} roughness={0.15} />
       </mesh>
 
-      {/* ══ Particles (instanced mesh) ════════════════════════════════ */}
+      {/* ══ Particles (instanced mesh — MLS-MPM fluid) ════════════════ */}
       <instancedMesh
         ref={particlesRef}
         args={[undefined, undefined, PARTICLE_COUNT]}
         frustumCulled={false}
       >
-        <sphereGeometry args={[0.04, 6, 6]} />
+        <sphereGeometry args={[0.055, 8, 8]} />
         <meshStandardMaterial vertexColors roughness={0.55} metalness={0.12} />
       </instancedMesh>
 
