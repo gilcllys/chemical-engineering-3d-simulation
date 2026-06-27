@@ -283,16 +283,18 @@ function resolveCollisions(pool) {
         const nx = dx / dist
         const ny = dy / dist
 
-        // Empurra igualmente nos dois sentidos
-        a.x -= nx * overlap;  a.y -= ny * overlap
-        b.x += nx * overlap;  b.y += ny * overlap
+        // Partícula settled = corpo estático: só a outra se move
+        const aStatic = a.settled
+        const bStatic = b.settled
+        if (!aStatic) { a.x -= nx * overlap; a.y -= ny * overlap }
+        if (!bStatic) { b.x += nx * overlap; b.y += ny * overlap }
 
-        // Impulso de velocidade (restituição baixa = comportamento de areia)
+        // Impulso de velocidade — settled não recebe impulso
         const relVn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny
         if (relVn < 0) {
           const imp = relVn * 0.12
-          a.vx += imp * nx;  a.vy += imp * ny
-          b.vx -= imp * nx;  b.vy -= imp * ny
+          if (!aStatic) { a.vx += imp * nx; a.vy += imp * ny }
+          if (!bStatic) { b.vx -= imp * nx; b.vy -= imp * ny }
         }
       }
     }
