@@ -1,6 +1,5 @@
-import { useRef, useMemo } from 'react'
-import { useFrame } from '@react-three/fiber'
-import { Text, Html } from '@react-three/drei'
+import { useMemo } from 'react'
+import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 
 function Label({ position, text, color = '#ffffff', visible = true }) {
@@ -8,9 +7,10 @@ function Label({ position, text, color = '#ffffff', visible = true }) {
   return (
     <Html position={position} center>
       <div style={{
-        background: 'rgba(10,14,26,0.85)', color, padding: '3px 8px',
-        borderRadius: 5, fontSize: 11, fontWeight: 600, border: `1px solid ${color}40`,
-        whiteSpace: 'nowrap', pointerEvents: 'none', letterSpacing: 0.3
+        background: 'rgba(10,14,26,0.90)', color, padding: '3px 9px',
+        borderRadius: 5, fontSize: 11, fontWeight: 700, border: `1px solid ${color}55`,
+        whiteSpace: 'nowrap', pointerEvents: 'none', letterSpacing: 0.3,
+        textShadow: `0 0 8px ${color}88`
       }}>
         {text}
       </div>
@@ -18,158 +18,262 @@ function Label({ position, text, color = '#ffffff', visible = true }) {
   )
 }
 
+// ── Shared material presets ────────────────────────────────────────────
+const FLANGE_MAT = { color: '#b0bec5', emissive: '#37474f', emissiveIntensity: 0.18, metalness: 0.90, roughness: 0.12 }
+const GLASS_MAT  = { color: '#7ec8e3', emissive: '#0a2540', emissiveIntensity: 0.05, metalness: 0.08, roughness: 0.04 }
+const CORNER_MAT = { color: '#b0bec5', emissive: '#37474f', emissiveIntensity: 0.18, metalness: 0.90, roughness: 0.12 }
+
+// Corner positions (x, z) for the 4 vertical edge bars
+const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]]
+
 export default function CycloneModel({ params }) {
   const {
     cylinderHeight, cylinderRadius, coneHeight,
     inletWidth, showWireframe, showLabels, opacity
   } = params
 
-  const totalHeight = cylinderHeight + coneHeight
-  const yOffset = totalHeight / 2 - cylinderHeight / 2
+  const vortexRadius = cylinderRadius * 0.35
+  const vortexHeight = cylinderHeight * 0.60
 
-  // Outer cylinder geometry
+  // ── Posições locais (dentro do group) ───────────────────────────
+  const yBase  = -(coneHeight / 2)
+  const cylTop = coneHeight / 2 + cylinderHeight
+  const cylMid = coneHeight / 2 + cylinderHeight / 2
+
+  // ── Geometrias do corpo ─────────────────────────────────────────
   const cylinderGeo = useMemo(() => new THREE.CylinderGeometry(
     cylinderRadius, cylinderRadius, cylinderHeight, 64, 1, true
   ), [cylinderRadius, cylinderHeight])
 
-  // Cone geometry
   const coneGeo = useMemo(() => new THREE.CylinderGeometry(
-    0.08, cylinderRadius, coneHeight, 64, 1, true
+    cylinderRadius, 0.06, coneHeight, 64, 1, true
   ), [cylinderRadius, coneHeight])
 
-  // Top cap
-  const topCapGeo = useMemo(() => new THREE.CircleGeometry(cylinderRadius, 64), [cylinderRadius])
+  const topRingGeo = useMemo(() => new THREE.RingGeometry(
+    vortexRadius, cylinderRadius, 64
+  ), [vortexRadius, cylinderRadius])
 
-  // Inner vortex finder (cylindro interno)
-  const vortexRadius = cylinderRadius * 0.35
-  const vortexHeight = cylinderHeight * 0.6
   const vortexGeo = useMemo(() => new THREE.CylinderGeometry(
     vortexRadius, vortexRadius, vortexHeight, 32, 1, true
   ), [vortexRadius, vortexHeight])
 
-  // Outlet duct (saída de ar limpo)
+  // Cano de saída RETO (vertical para cima)
+  const outletH   = 1.60
   const outletGeo = useMemo(() => new THREE.CylinderGeometry(
-    vortexRadius, vortexRadius, 1.5, 32, 1, true
+    vortexRadius, vortexRadius, outletH, 32, 1, false
   ), [vortexRadius])
 
-  // Inlet duct (entrada tangencial)
-  const inletGeo = useMemo(() => new THREE.BoxGeometry(inletWidth, inletWidth * 1.5, cylinderRadius * 0.8), [inletWidth, cylinderRadius])
+  // ── Entrada tangencial (extendida 0.5 para a direita) ───────────
+  const inletExtW    = inletWidth * 1.2 + 0.5          // total X length
+  const inletCenterX = cylinderRadius + inletWidth * 0.20 + 0.25
+  const inletRightX  = inletCenterX + inletExtW / 2
 
-  // Dust exit pipe (saída de pó)
-  const dustExitGeo = useMemo(() => new THREE.CylinderGeometry(0.06, 0.06, 0.6, 16), [])
+  const inletGeo = useMemo(() => new THREE.BoxGeometry(
+    inletWidth * 1.2 + 0.5, inletWidth * 1.4, cylinderRadius * 0.85
+  ), [inletWidth, cylinderRadius])
 
-  const material = (color, emissive = '#000000') => (
-    <meshStandardMaterial
-      color={color}
-      emissive={emissive}
-      emissiveIntensity={0.1}
-      metalness={0.6}
-      roughness={0.3}
-      transparent
-      opacity={opacity}
-      side={THREE.DoubleSide}
-      wireframe={showWireframe}
-    />
+  const dustExitGeo = useMemo(() => new THREE.CylinderGeometry(0.07, 0.07, 0.50, 16), [])
+
+  // ── Caixa coletora ────────────────────────────────────────────── 
+  const boxH       = 2.00
+  const boxW       = 1.80
+  const boxD       = 1.80
+  const boxCenterY = -coneHeight / 2 - 0.55 - boxH / 2
+  const boxFloorY  = boxCenterY - boxH / 2 + 0.03
+
+  // ── Indicador de nível — 3 segmentos na borda esquerda ──────────
+  const fillBarX    = -boxW / 2 - 0.08
+  const segH        = boxH / 3
+  const seg1CenterY = boxCenterY - boxH / 2 + segH * 0.5   // verde  – fundo
+  const seg2CenterY = boxCenterY - boxH / 2 + segH * 1.5   // amarelo – meio
+  const seg3CenterY = boxCenterY - boxH / 2 + segH * 2.5   // vermelho – topo
+
+  // ── Helpers de material ──────────────────────────────────────────
+  const mat = (color, emissive = '#000') => (
+    <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={0.12}
+      metalness={0.65} roughness={0.28} transparent opacity={opacity}
+      side={THREE.DoubleSide} wireframe={showWireframe} />
   )
-
-  const solidMaterial = (color) => (
-    <meshStandardMaterial
-      color={color}
-      metalness={0.7}
-      roughness={0.2}
-      transparent
-      opacity={Math.min(1, opacity + 0.2)}
-      wireframe={showWireframe}
-    />
+  const solidMat = (color, emissive = '#000') => (
+    <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={0.1}
+      metalness={0.7} roughness={0.22} transparent
+      opacity={Math.min(1, opacity + 0.15)} wireframe={showWireframe} />
   )
-
-  const yBase = -(coneHeight / 2)
 
   return (
     <group position={[0, yBase, 0]}>
-      {/* === OUTER CYLINDER === */}
-      <mesh geometry={cylinderGeo} position={[0, coneHeight / 2 + cylinderHeight / 2, 0]} castShadow receiveShadow>
-        {material('#4a90a4', '#1e3a5f')}
+
+      {/* ══════════════════════════════════════════════════════════ */}
+      {/* ── CORPO DO CICLONE ─────────────────────────────────────── */}
+      {/* ══════════════════════════════════════════════════════════ */}
+
+      {/* Cilindro externo */}
+      <mesh geometry={cylinderGeo} position={[0, cylMid, 0]} castShadow receiveShadow>
+        {mat('#3a7d94', '#0d3347')}
       </mesh>
 
-      {/* Top cap */}
-      <mesh geometry={topCapGeo} position={[0, coneHeight / 2 + cylinderHeight, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        {solidMaterial('#2c5f6e')}
+      {/* Tampa anular */}
+      <mesh geometry={topRingGeo} position={[0, cylTop, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        {solidMat('#2a5c6e')}
       </mesh>
 
-      {/* === CONE === */}
+      {/* Cone */}
       <mesh geometry={coneGeo} position={[0, 0, 0]} castShadow>
-        {material('#4a90a4', '#1e3a5f')}
+        {mat('#3a7d94', '#0d3347')}
       </mesh>
 
-      {/* === INNER VORTEX FINDER === */}
-      <mesh geometry={vortexGeo}
-        position={[0, coneHeight / 2 + cylinderHeight - vortexHeight / 2, 0]}
-        castShadow>
-        <meshStandardMaterial
-          color="#7dd3fc"
-          emissive="#0ea5e9"
-          emissiveIntensity={0.3}
-          metalness={0.4}
-          roughness={0.3}
-          transparent
-          opacity={opacity * 0.8}
-          side={THREE.DoubleSide}
-          wireframe={showWireframe}
-        />
+      {/* ── FLANGE: junção cilindro / cone ────────────────────────── */}
+      <mesh position={[0, coneHeight / 2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[cylinderRadius + 0.06, 0.045, 10, 64]} />
+        <meshStandardMaterial {...FLANGE_MAT} wireframe={showWireframe} />
       </mesh>
 
-      {/* === OUTLET DUCT (top) === */}
-      <mesh geometry={outletGeo}
-        position={[0, coneHeight / 2 + cylinderHeight + 0.75, 0]}>
-        <meshStandardMaterial color="#38bdf8" metalness={0.5} roughness={0.3}
-          transparent opacity={opacity} side={THREE.DoubleSide} wireframe={showWireframe} />
+      {/* Vortex finder (cilindro interno) */}
+      <mesh geometry={vortexGeo} position={[0, cylTop - vortexHeight / 2, 0]}>
+        <meshStandardMaterial color="#5bc8f5" emissive="#0284c7" emissiveIntensity={0.35}
+          metalness={0.4} roughness={0.25} transparent opacity={opacity * 0.85}
+          side={THREE.DoubleSide} wireframe={showWireframe} />
       </mesh>
 
-      {/* Outlet elbow horizontal */}
-      <mesh position={[cylinderRadius * 0.8, coneHeight / 2 + cylinderHeight + 1.4, 0]}
-        rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[vortexRadius, vortexRadius, cylinderRadius * 1.6, 16, 1, true]} />
-        <meshStandardMaterial color="#38bdf8" metalness={0.5} roughness={0.3}
-          transparent opacity={opacity} side={THREE.DoubleSide} wireframe={showWireframe} />
+      {/* Cano de saída reto */}
+      <mesh geometry={outletGeo} position={[0, cylTop + outletH / 2, 0]} castShadow>
+        <meshStandardMaterial color="#5bc8f5" emissive="#0284c7" emissiveIntensity={0.30}
+          metalness={0.55} roughness={0.20} transparent opacity={opacity}
+          side={THREE.DoubleSide} wireframe={showWireframe} />
       </mesh>
 
-      {/* === INLET DUCT (tangential) === */}
+      {/* ── FLANGE: topo do cano de saída ─────────────────────────── */}
+      <mesh position={[0, cylTop + outletH, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[vortexRadius + 0.07, 0.036, 10, 32]} />
+        <meshStandardMaterial {...FLANGE_MAT} wireframe={showWireframe} />
+      </mesh>
+
+      {/* ══════════════════════════════════════════════════════════ */}
+      {/* ── ENTRADA TANGENCIAL (extendida) ───────────────────────── */}
+      {/* ══════════════════════════════════════════════════════════ */}
+
       <mesh geometry={inletGeo}
-        position={[cylinderRadius + inletWidth * 0.1, coneHeight / 2 + cylinderHeight - inletWidth * 0.75, 0]}>
-        {solidMaterial('#2c5f6e')}
+        position={[inletCenterX, cylTop - inletWidth * 0.8, 0]}>
+        {solidMat('#1e4d5c')}
       </mesh>
 
-      {/* === DUST EXIT === */}
-      <mesh geometry={dustExitGeo} position={[0, -coneHeight / 2 - 0.3, 0]}>
-        {solidMaterial('#78350f')}
+      {/* Flange de abertura (far end) */}
+      <mesh position={[inletRightX, cylTop - inletWidth * 0.8, 0]}>
+        <boxGeometry args={[0.065, inletWidth * 1.4 + 0.14, cylinderRadius * 0.85 + 0.14]} />
+        <meshStandardMaterial color="#b0bec5" emissive="#37474f" emissiveIntensity={0.14}
+          metalness={0.85} roughness={0.18} wireframe={showWireframe} />
       </mesh>
 
-      {/* Dust collection barrel */}
-      <mesh position={[0, -coneHeight / 2 - 0.85, 0]}>
-        <cylinderGeometry args={[0.18, 0.18, 0.5, 16]} />
-        <meshStandardMaterial color="#92400e" metalness={0.3} roughness={0.6}
-          transparent opacity={Math.min(1, opacity + 0.15)} wireframe={showWireframe} />
+      {/* Tubo de saída de pó */}
+      <mesh geometry={dustExitGeo} position={[0, -coneHeight / 2 - 0.25, 0]}>
+        {solidMat('#7c3700', '#3a1a00')}
       </mesh>
 
-      {/* === LABELS === */}
-      <Label position={[cylinderRadius + 1.8, coneHeight / 2 + cylinderHeight - inletWidth * 0.75, 0]}
-        text="↑ Entrada de Ar (com partículas)" color="#fbbf24" visible={showLabels} />
+      {/* ══════════════════════════════════════════════════════════ */}
+      {/* ── CAIXA COLETORA — INDUSTRIAL GLASS CONTAINER ─────────── */}
+      {/* ══════════════════════════════════════════════════════════ */}
 
-      <Label position={[cylinderRadius * 1.6 + 0.8, coneHeight / 2 + cylinderHeight + 1.4, 0]}
-        text="→ Saída de Ar Limpo" color="#38bdf8" visible={showLabels} />
+      {/* Piso sólido (dark metal) */}
+      <mesh position={[0, boxFloorY, 0]}>
+        <boxGeometry args={[boxW + 0.04, 0.06, boxD + 0.04]} />
+        <meshStandardMaterial color="#4a2200" emissive="#1a0a00" emissiveIntensity={0.12}
+          metalness={0.55} roughness={0.55}
+          transparent opacity={Math.min(1, opacity + 0.25)} wireframe={showWireframe} />
+      </mesh>
 
-      <Label position={[cylinderRadius + 1.2, coneHeight / 2 + cylinderHeight * 0.5, 0]}
-        text="Parede Exterior" color="#94a3b8" visible={showLabels} />
+      {/* Parede frontal (z+) */}
+      <mesh position={[0, boxCenterY, boxD / 2]}>
+        <boxGeometry args={[boxW, boxH, 0.04]} />
+        <meshStandardMaterial {...GLASS_MAT} transparent opacity={0.25}
+          depthWrite={false} side={THREE.DoubleSide} wireframe={showWireframe} />
+      </mesh>
 
-      <Label position={[vortexRadius + 0.8, coneHeight / 2 + cylinderHeight - vortexHeight / 2, 0]}
-        text="Cilindro Interno (Vortex Finder)" color="#7dd3fc" visible={showLabels} />
+      {/* Parede traseira (z-) */}
+      <mesh position={[0, boxCenterY, -boxD / 2]}>
+        <boxGeometry args={[boxW, boxH, 0.04]} />
+        <meshStandardMaterial {...GLASS_MAT} transparent opacity={0.25}
+          depthWrite={false} side={THREE.DoubleSide} wireframe={showWireframe} />
+      </mesh>
 
-      <Label position={[cylinderRadius + 0.8, -coneHeight * 0.3, 0]}
-        text="Cone Separador" color="#86efac" visible={showLabels} />
+      {/* Parede esquerda (x-) */}
+      <mesh position={[-boxW / 2, boxCenterY, 0]}>
+        <boxGeometry args={[0.04, boxH, boxD]} />
+        <meshStandardMaterial {...GLASS_MAT} transparent opacity={0.25}
+          depthWrite={false} side={THREE.DoubleSide} wireframe={showWireframe} />
+      </mesh>
 
-      <Label position={[0.5, -coneHeight / 2 - 0.85, 0]}
-        text="↓ Saída de Pó" color="#f97316" visible={showLabels} />
+      {/* Parede direita (x+) */}
+      <mesh position={[boxW / 2, boxCenterY, 0]}>
+        <boxGeometry args={[0.04, boxH, boxD]} />
+        <meshStandardMaterial {...GLASS_MAT} transparent opacity={0.25}
+          depthWrite={false} side={THREE.DoubleSide} wireframe={showWireframe} />
+      </mesh>
+
+      {/* ── Cantoneiras metálicas — 4 arestas verticais ────────────── */}
+      {CORNERS.map(([sx, sz], i) => (
+        <mesh key={`corner-${i}`}
+          position={[sx * boxW / 2, boxCenterY, sz * boxD / 2]}>
+          <cylinderGeometry args={[0.032, 0.032, boxH, 8]} />
+          <meshStandardMaterial {...CORNER_MAT} wireframe={showWireframe} />
+        </mesh>
+      ))}
+
+      {/* ── Marcações de nível (25 / 50 / 75 %) — parede frontal ──── */}
+      {[0.25, 0.50, 0.75].map((pct, i) => (
+        <mesh key={`grad-${i}`}
+          position={[0, boxCenterY - boxH / 2 + boxH * pct, boxD / 2 + 0.028]}>
+          <boxGeometry args={[boxW - 0.14, 0.008, 0.010]} />
+          <meshStandardMaterial color="#334155" transparent opacity={0.72}
+            depthWrite={false} wireframe={showWireframe} />
+        </mesh>
+      ))}
+
+      {/* ══════════════════════════════════════════════════════════ */}
+      {/* ── INDICADOR DE NÍVEL — barra tricolor (estático) ──────── */}
+      {/* ══════════════════════════════════════════════════════════ */}
+
+      {/* Segmento verde — fundo (0–33 %) */}
+      <mesh position={[fillBarX, seg1CenterY, 0]}>
+        <boxGeometry args={[0.08, segH - 0.02, 0.08]} />
+        <meshStandardMaterial color="#16a34a" emissive="#14532d" emissiveIntensity={0.22}
+          metalness={0.30} roughness={0.40} wireframe={showWireframe} />
+      </mesh>
+
+      {/* Segmento amarelo — meio (33–66 %) */}
+      <mesh position={[fillBarX, seg2CenterY, 0]}>
+        <boxGeometry args={[0.08, segH - 0.02, 0.08]} />
+        <meshStandardMaterial color="#f59e0b" emissive="#78350f" emissiveIntensity={0.22}
+          metalness={0.30} roughness={0.40} wireframe={showWireframe} />
+      </mesh>
+
+      {/* Segmento vermelho — topo (66–100 %) */}
+      <mesh position={[fillBarX, seg3CenterY, 0]}>
+        <boxGeometry args={[0.08, segH - 0.02, 0.08]} />
+        <meshStandardMaterial color="#dc2626" emissive="#7f1d1d" emissiveIntensity={0.22}
+          metalness={0.30} roughness={0.40} wireframe={showWireframe} />
+      </mesh>
+
+      {/* ══════════════════════════════════════════════════════════ */}
+      {/* ── LABELS ───────────────────────────────────────────────── */}
+      {/* ══════════════════════════════════════════════════════════ */}
+
+      <Label position={[cylinderRadius + 2.2, cylTop - inletWidth * 0.8, 0]}
+        text="→ Entrada de Ar (com partículas)" color="#EE7733" visible={showLabels} />
+
+      <Label position={[vortexRadius + 1.2, cylTop + outletH + 0.3, 0]}
+        text="↑ Saída de Ar Limpo (Overflow)" color="#33BBEE" visible={showLabels} />
+
+      <Label position={[cylinderRadius + 1.3, cylMid, 0]}
+        text="Parede Exterior" color="#BBBBBB" visible={showLabels} />
+
+      <Label position={[vortexRadius + 1.0, cylTop - vortexHeight / 2, 0]}
+        text="Vortex Finder (Cilindro Interno)" color="#5bc8f5" visible={showLabels} />
+
+      <Label position={[cylinderRadius + 1.1, -coneHeight * 0.25, 0]}
+        text="Cone Separador" color="#AA44AA" visible={showLabels} />
+
+      <Label position={[0.75, boxCenterY, 0]}
+        text="Coletor de Pó (Underflow)" color="#EE3377" visible={showLabels} />
     </group>
   )
 }

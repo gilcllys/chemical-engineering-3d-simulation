@@ -3,28 +3,32 @@ import { motion, AnimatePresence } from 'framer-motion'
 import CyclonePage from './pages/CyclonePage'
 
 const EQUIPMENTS = [
-  { id: 'cyclone', name: 'Ciclone', icon: '🌀', status: 'available', description: 'Separador Ciclônico' },
-  { id: 'reactor', name: 'Reator CSTR', icon: '⚗️', status: 'coming', description: 'Em breve' },
-  { id: 'distillation', name: 'Coluna de Destilação', icon: '🏭', status: 'coming', description: 'Em breve' },
-  { id: 'heatexchanger', name: 'Trocador de Calor', icon: '🔁', status: 'coming', description: 'Em breve' },
+  { id: 'cyclone',      name: 'Ciclone',             icon: '🌀', status: 'available', description: 'Separador Ciclônico' },
+  { id: 'reactor',      name: 'Reator CSTR',          icon: '⚗️', status: 'coming',    description: 'Em breve' },
+  { id: 'distillation', name: 'Coluna de Destilação', icon: '🏭', status: 'coming',    description: 'Em breve' },
+  { id: 'heatexchanger',name: 'Trocador de Calor',    icon: '🔁', status: 'coming',    description: 'Em breve' },
 ]
 
 export default function App() {
   const [selected, setSelected] = useState('cyclone')
-  const [menuOpen, setMenuOpen] = useState(false)
 
   return (
     <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--color-bg)' }}>
-      {/* Header */}
+
+      {/* ── Header ── */}
       <header style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 24px', height: '56px', background: 'var(--color-surface)',
-        borderBottom: '1px solid var(--color-border)', zIndex: 100, flexShrink: 0
+        padding: '0 24px', height: '56px',
+        background: 'var(--color-surface)',
+        borderBottom: '1px solid var(--color-border)',
+        boxShadow: '0 1px 4px var(--color-shadow)',
+        zIndex: 100, flexShrink: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 22 }}>⚙️</span>
+        {/* Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 24 }}>⚙️</span>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text)', letterSpacing: 0.5 }}>
+            <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--color-text)', letterSpacing: 0.3 }}>
               Reatores 3D
             </div>
             <div style={{ fontSize: 11, color: 'var(--color-muted)' }}>
@@ -33,7 +37,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Equipment Selector */}
+        {/* Equipment selector */}
         <div style={{ display: 'flex', gap: 8 }}>
           {EQUIPMENTS.map(eq => (
             <button
@@ -42,26 +46,33 @@ export default function App() {
               title={eq.description}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                padding: '6px 14px', borderRadius: 8, border: 'none', cursor: eq.status === 'available' ? 'pointer' : 'not-allowed',
-                background: selected === eq.id ? 'var(--color-primary)' : 'var(--color-border)',
-                color: eq.status === 'coming' ? 'var(--color-muted)' : 'var(--color-text)',
-                fontSize: 13, fontWeight: 500, opacity: eq.status === 'coming' ? 0.5 : 1,
-                transition: 'all 0.2s'
+                padding: '6px 14px', borderRadius: 8,
+                border: selected === eq.id ? '1.5px solid var(--color-primary)' : '1.5px solid var(--color-border)',
+                cursor: eq.status === 'available' ? 'pointer' : 'not-allowed',
+                background: selected === eq.id ? '#dbeafe' : '#f8fafc',
+                color: eq.status === 'coming' ? 'var(--color-muted)' : selected === eq.id ? 'var(--color-primary)' : 'var(--color-text)',
+                fontSize: 13, fontWeight: selected === eq.id ? 700 : 500,
+                opacity: eq.status === 'coming' ? 0.55 : 1,
+                transition: 'all 0.2s',
               }}
             >
               <span>{eq.icon}</span>
               <span>{eq.name}</span>
-              {eq.status === 'coming' && <span style={{ fontSize: 10, background: '#334155', padding: '1px 5px', borderRadius: 4 }}>Em breve</span>}
+              {eq.status === 'coming' && (
+                <span style={{ fontSize: 10, background: '#e2e8f0', color: '#64748b', padding: '1px 5px', borderRadius: 4 }}>
+                  Em breve
+                </span>
+              )}
             </button>
           ))}
         </div>
 
         <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>
-          Arraste para rotacionar • Scroll para zoom
+          Arraste para rotacionar · Scroll para zoom
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* ── Content ── */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <AnimatePresence mode="wait">
           {selected === 'cyclone' && (

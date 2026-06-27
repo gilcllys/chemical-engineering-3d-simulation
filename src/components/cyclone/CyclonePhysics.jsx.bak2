@@ -1,0 +1,452 @@
+/**
+ * CyclonePhysics.jsx
+ *
+ * Ciclo de vida das partículas:
+ *  1. 'outer'          → entra tangencialmente, espiral DESCENDO pela parede exterior
+ *  2. 'inner'          → partículas leves migram para o centro, espiral SUBINDO pelo vortex finder
+ *  3. 'overflow_exit'  → saem pelo cotovelo curvo no topo → vão para DIREITA (Cartesiano)
+ *  4. 'underflow_fall' → partículas pesadas caem pelo apex para a CAIXA coletora (Cartesiano)
+ *  5. 'inlet'          → stream de entrada visible vindo da direita
+ */
+
+import { useRef, useMemo, useEffect } from 'react'
+import { useFrame } from '@react-three/fiber'
+import * as THREE from 'three'
+
+// ── Paleta acessível para daltônicos (Paul Tol) ─────────────────────
+const COL = {
+  veryFine:   new THREE.Color('#0077BB'),
+  fine:       new THREE.Color('#33BBEE'),
+  medium:     new THREE.Color('#EE7733'),
+  coarse:     new THREE.Color('#CC3311'),
+  veryCoarse: new THREE.Color('#EE3377'),
+  inlet:      new THREE.Color('#888888'),
+  overflow:   new THREE.Color('#88CCEE'),
+  underflow:  new THREE.Color('#AA4400'),
+}
+
+function particleColor(dp) {
+  if (dp < 5)  return COL.veryFine
+  if (dp < 15) return COL.fine
+  if (dp < 30) return COL.medium
+  if (dp < 60) return COL.coarse
+  return COL.veryCoarse
+}
+
+// Raio da parede em y no world space (y=0 = junção cone/cilindro)
+function wallRAt(y, R, coneH, cylH) {
+  if (y >= 0 && y <= cylH) return R
+  if (y < 0) {
+    const t = Math.min(-y / coneH, 1.0)
+    return R * (1 - t) + 0.045 * t
+  }
+  return R
+}
+
+// Converte coordenadas polares para cartesianas (para transição de fase)
+function toCar(p) {
+  const cosA = Math.cos(p.angle), sinA = Math.sin(p.angle)
+  p.x  = cosA * p.r
+  p.z  = sinA * p.r
+  p.vx = p.vr * cosA - p.r * p.omega * sinA
+  p.vz = p.vr * sinA + p.r * p.omega * cosA
+}
+
+// ── Fábricas de partículas ──────────────────────────────────────────
+
+function makeActive(params, forceSmall = false) {
+  const { cylinderRadius, cylinderHeight, inletVelocity, particleSize } = params
+  const dp = forceSmall
+    ? 2 + Math.random() * 13
+    : Math.max(2, particleSize * (0.4 + Math.random() * 1.3))
+  const isHeavy    = dp >= 25
+  const sizeFactor = Math.min(dp / 60, 1.0)
+  const r          = cylinderRadius * (0.82 + Math.random() * 0.14)
+  const angle      = (Math.random() - 0.5) * 0.5  // próximo do ângulo 0 (lado direito = inlet)
+  const y          = cylinderHeight * (0.58 + Math.random() * 0.34)
+  const speed      = inletVelocity * (0.75 + Math.random() * 0.5)
+
+  return {
+    dp, sizeFactor, isHeavy,
+    r, angle, y,
+    vr: -speed * 0.03,
+    vy: -speed * (0.10 + sizeFactor * 0.12),
+    omega: -speed / Math.max(r, 0.04),
+    phase: 'outer',
+    sphereR: Math.max(0.018, dp * 0.00078),
+    color: particleColor(dp),
+    alive: true,
+  }
+}
+
+function makeInletStream(params) {
+  const { cylinderRadius, cylinderHeight, inletVelocity } = params
+  const spread = (Math.random() - 0.5) * 0.28
+  return {
+    dp: 8 + Math.random() * 15,
+    sizeFactor: 0.3,
+    r: cylinderRadius * (1.05 + Math.random() * 0.22),
+    angle: 0.04 + spread,
+    y: cylinderHeight * (0.70 + Math.random() * 0.20),
+    vr: -inletVelocity * 0.55,
+    vy: -inletVelocity * 0.03,
+    omega: -inletVelocity / cylinderRadius * 0.90,
+    phase: 'inlet',
+    sphereR: 0.018,
+    color: COL.inlet,
+    alive: true,
+    ttl: 0.30 + Math.random() * 0.22,
+    age: 0,
+  }
+}
+
+function makeOverflowStream(params) {
+  const { cylinderHeight, cylinderRadius, inletVelocity } = params
+  const vR     = cylinderRadius * 0.35
+  const spread = (Math.random() - 0.5) * vR * 0.75
+  return {
+    x: spread,
+    z: (Math.random() - 0.5) * vR * 0.75,
+    y: cylinderHeight - 0.04 + Math.random() * 0.06,
+    vx: spread * 0.25,
+    vy: inletVelocity * (0.50 + Math.random() * 0.30),
+    vz: (Math.random() - 0.5) * 0.25,
+    phase: 'overflow_exit',
+    sphereR: 0.015 + Math.random() * 0.013,
+    color: COL.overflow,
+    alive: true,
+    ttl: 2.8 + Math.random() * 1.8,
+    age: 0,
+  }
+}
+
+// ── Constantes ────────────────────────────────────────────────────────
+const MAX   = 800
+const dummy = new THREE.Object3D()
+
+export default function CyclonePhysics({ params, isRunning = true }) {
+  const {
+    cylinderRadius, cylinderHeight, coneHeight,
+    inletVelocity, particleCount, particleSize,
+  } = params
+
+  const maxActive = Math.min(particleCount, 380)
+
+  // Constantes derivadas (mesmas que CycloneModel usa)
+  const vortexR   = cylinderRadius * 0.35
+  const R_core    = cylinderRadius * 0.28
+  const BEND_R    = Math.max(vortexR * 4.5, 0.28)
+  const HORIZ_EXT = cylinderRadius + 1.6
+  const PIPE_END  = BEND_R + HORIZ_EXT
+  // Coordenadas world do fundo da caixa coletora
+  // yBase do group = -coneHeight/2
+  // caixa center local: -coneHeight/2 - 0.55 - 0.45 = -coneHeight/2 - 1.00
+  // caixa floor local:  -coneHeight/2 - 1.00 - 0.45 = -coneHeight/2 - 1.45
+  // world = local + yBase = (-coneHeight/2 - 1.45) + (-coneHeight/2) = -coneHeight - 1.45
+  const BOX_FLOOR       = -(coneHeight) - 2.52  // fundo da caixa (maior)
+  const BOX_TOP         = -(coneHeight) - 0.55   // topo da caixa
+  const BOX_HALF        = 0.87                   // metade interna (1.80/2 - parede)
+  const FILL_HEIGHT     = BOX_TOP - BOX_FLOOR     // ≈ 1.97 unidades
+  const FILL_PER_PART   = FILL_HEIGHT * 0.90 / 250 // incremento por partícula
+
+  const meshRef   = useRef()
+  const pool      = useRef([])
+  const timers    = useRef({ spawn: 0, inlet: 0, over: 0 })
+  const fillLevel = useRef(null)   // nível atual do pó na caixa (world y)
+
+  const geometry = useMemo(() => new THREE.SphereGeometry(1, 8, 8), [])
+  const material = useMemo(() => new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.05 }), [])
+
+  // Limpa o pool quando parâmetros de geometria mudam ou ao resetar (mudança de key)
+  useEffect(() => {
+    pool.current = []
+    timers.current = { spawn: 0, inlet: 0, over: 0 }
+    fillLevel.current = -(coneHeight) - 2.52  // BOX_FLOOR (caixa maior)
+  },
+    [cylinderRadius, cylinderHeight, coneHeight, particleCount, particleSize])
+
+  useFrame((_, delta) => {
+    if (!meshRef.current) return
+    if (!isRunning) {
+      // Mantém o último frame congelado
+      return
+    }
+
+    const dt  = Math.min(delta, 1 / 30)
+    const T   = timers.current
+
+    // ── Contagem de fases ─────────────────────────────────────────
+    let nActive = 0, nUnder = 0, nOver = 0
+    for (const p of pool.current) {
+      if (p.phase === 'outer' || p.phase === 'inner') nActive++
+      else if (p.phase === 'underflow_fall') nUnder++
+      else if (p.phase === 'overflow_exit')  nOver++
+    }
+
+    // ── Spawn de partículas ativas ─────────────────────────────────
+    T.spawn += dt
+    const spawnInterval = Math.max(0.025 / (inletVelocity / 15), 0.012)
+    while (T.spawn >= spawnInterval && nActive < maxActive) {
+      T.spawn -= spawnInterval
+      pool.current.push(makeActive(params, Math.random() < 0.45))
+      nActive++
+    }
+    if (T.spawn > spawnInterval) T.spawn = 0
+
+    // ── Stream de entrada (sempre visível) ────────────────────────
+    T.inlet += dt
+    if (T.inlet >= 0.055 && pool.current.length < MAX - 5) {
+      T.inlet = 0
+      for (let k = 0; k < 3; k++) pool.current.push(makeInletStream(params))
+    }
+
+    // ── Stream de saída overflow (partículas leves direto pelo topo) ────
+    T.over += dt
+    if (T.over >= 0.035 && pool.current.length < MAX - 8) {
+      T.over = 0
+      const batch = Math.ceil(2 + inletVelocity / 12)
+      for (let k = 0; k < batch; k++) pool.current.push(makeOverflowStream(params))
+    }
+
+    // ── Física (2 sub-steps para estabilidade) ─────────────────────
+    const SUB = 2
+    const sdt = dt / SUB
+
+    for (let s = 0; s < SUB; s++) {
+      for (const p of pool.current) {
+        if (!p.alive) continue
+
+        // TTL
+        if (p.ttl !== undefined) {
+          p.age += sdt
+          if (p.age >= p.ttl) { p.alive = false; continue }
+        }
+
+        // ── FASE: Vórtice externo (espiral descendo) ───────────────
+        if (p.phase === 'outer') {
+          const omegaGas = -inletVelocity * 0.88 / Math.max(p.r, 0.04)
+          p.omega += (omegaGas - p.omega) * Math.min(sdt * 4, 0.95)
+
+          // Centrifugação empurra pesadas para a parede; drag arrasta leves para centro
+          const centrifugal = p.sizeFactor * 0.70 * p.omega * p.omega * p.r
+          const inwardDrag  = (1 - p.sizeFactor) * 2.5 * (p.r / cylinderRadius)
+          p.vr += (centrifugal - inwardDrag) * sdt
+          p.vr *= 0.84
+
+          // Desce
+          const targetVy = -inletVelocity * (0.20 + p.sizeFactor * 0.28)
+          p.vy += (targetVy - p.vy) * Math.min(sdt * 3, 0.9)
+
+          // Leves que chegam ao núcleo → vórtice interno
+          if (p.r < R_core && !p.isHeavy) {
+            p.phase = 'inner'
+            p.vr    = (Math.random() - 0.5) * 0.2
+          }
+
+          // Colisão com parede
+          const wR = wallRAt(p.y, cylinderRadius, coneHeight, cylinderHeight) - p.sphereR
+          if (wR > 0.01 && p.r >= wR) {
+            p.r      = wR
+            p.vr     = -Math.abs(p.vr) * 0.35
+            p.vy    *= 0.70
+            p.omega *= 0.82
+          }
+
+          // Saída pelo apex → caixa coletora
+          if (p.y < -coneHeight + 0.20) {
+            if (nUnder < 250 && Math.random() < 0.65) {
+              toCar(p)
+              p.phase   = 'underflow_fall'
+              p.settled = false
+              // Espalha pela caixa inteira: posição aleatória no topo da caixa
+              p.x   = (Math.random() - 0.5) * BOX_HALF * 1.75
+              p.z   = (Math.random() - 0.5) * BOX_HALF * 1.75
+              p.y   = BOX_TOP - 0.08
+              // Velocidade inicial: queda moderada + leve deriva horizontal
+              p.vy  = -(1.0 + Math.random() * 1.2)
+              p.vx  = (Math.random() - 0.5) * 1.0
+              p.vz  = (Math.random() - 0.5) * 1.0
+              nUnder++
+            } else {
+              p.alive = false
+            }
+          }
+
+        // ── FASE: Vórtice interno (espiral subindo) ────────────────
+        } else if (p.phase === 'inner') {
+          const omegaGas = -inletVelocity * 1.1 / Math.max(p.r, 0.02)
+          p.omega += (omegaGas - p.omega) * Math.min(sdt * 6, 0.95)
+
+          p.vr += -3.0 * p.r * sdt
+          p.vr *= 0.80
+
+          const targetVy = inletVelocity * 0.55
+          p.vy += (targetVy - p.vy) * Math.min(sdt * 4, 0.9)
+
+          // Saída pelo topo → cotovelo curvo
+          if (p.y > cylinderHeight - 0.05) {
+            if (nOver < 100 && Math.random() < 0.90) {
+              toCar(p)
+              p.phase = 'overflow_exit'
+              p.ttl   = 3.8 + Math.random() * 2.0
+              p.age   = 0
+              p.color = COL.overflow
+              nOver++
+            } else {
+              p.alive = false
+            }
+          }
+
+        // ── FASE: Stream de entrada ────────────────────────────────
+        } else if (p.phase === 'inlet') {
+          const omegaGas = -inletVelocity / Math.max(p.r, 0.04)
+          p.omega += (omegaGas - p.omega) * Math.min(sdt * 6, 0.95)
+          p.vr    *= 0.90
+          // Quando chega à parede interna, converte para ativa
+          if (p.r <= cylinderRadius * 0.72) {
+            const a = makeActive(params)
+            a.r = p.r; a.angle = p.angle; a.y = p.y
+            a.vr = p.vr; a.vy = p.vy; a.omega = p.omega
+            if (nActive < maxActive) { pool.current.push(a); nActive++ }
+            p.alive = false
+          }
+
+        // ── FASE: Saída reta para cima ────────────────────────────────
+        } else if (p.phase === 'overflow_exit') {
+          // Partículas saem direto para cima pelo cano de saída
+          const pipeSpeed = inletVelocity * 0.58
+          p.vy += (pipeSpeed - p.vy) * Math.min(sdt * 8, 0.95)
+
+          // Confina ao eixo do cano (amortece x e z)
+          p.vx = (p.vx || 0) * (1 - sdt * 6)
+          p.vz = (p.vz || 0) * (1 - sdt * 6)
+          p.x  = (p.x  || 0) * (1 - sdt * 3)
+          p.z  = (p.z  || 0) * (1 - sdt * 3)
+
+          p.x  = (p.x || 0) + p.vx * sdt
+          p.y += p.vy * sdt
+          p.z  = (p.z || 0) + p.vz * sdt
+
+          // Mata ao sair pelo topo do cano + dispersão acima
+          if (p.y > cylinderHeight + 2.5) p.alive = false
+
+        // ── FASE: Queda na caixa coletora (Cartesiano) ─────────────
+        } else if (p.phase === 'underflow_fall') {
+          if (p.settled) continue
+
+          if (fillLevel.current === null) fillLevel.current = BOX_FLOOR
+
+          // Gravidade realista
+          p.vy = (p.vy || 0) - sdt * 14
+
+          // Arrasto do ar leve (permite deslizar naturalmente)
+          p.vx = (p.vx || 0) * (1 - sdt * 1.2)
+          p.vz = (p.vz || 0) * (1 - sdt * 1.2)
+
+          p.x  = (p.x || 0) + p.vx * sdt
+          p.y += p.vy * sdt
+          p.z  = (p.z || 0) + p.vz * sdt
+
+          // Colisão com o nível atual do pó
+          const effectiveFloor = fillLevel.current
+          if (p.y <= effectiveFloor + p.sphereR * 0.9) {
+            p.y = effectiveFloor + p.sphereR * 0.9
+
+            if (Math.abs(p.vy) > 0.22) {
+              // Quique mínimo tipo areia seca
+              p.vy = -p.vy * 0.08
+              // Fricção moderada no impacto (permite escorregamento)
+              p.vx *= 0.50
+              p.vz *= 0.50
+
+              // Ângulo de repouso: empurra para fora quando a pilha cresce
+              const pileRatio = Math.max(0, (fillLevel.current - BOX_FLOOR) / FILL_HEIGHT)
+              const r = Math.sqrt((p.x || 0) ** 2 + (p.z || 0) ** 2)
+              if (pileRatio > 0.03) {
+                const pushStrength = pileRatio * 1.8
+                if (r > 0.08) {
+                  // Empurra radialmente para fora
+                  p.vx += (p.x / r) * pushStrength
+                  p.vz += (p.z / r) * pushStrength
+                } else {
+                  // No centro: direção aleatória
+                  const ang = Math.random() * Math.PI * 2
+                  p.vx += Math.cos(ang) * pushStrength
+                  p.vz += Math.sin(ang) * pushStrength
+                }
+              }
+            } else {
+              // Velocidade baixa: verifica se ainda desliza ou assenta
+              const totalHoriz = Math.sqrt((p.vx || 0) ** 2 + (p.vz || 0) ** 2)
+              if (totalHoriz < 0.08) {
+                // Assenta definitivamente
+                p.vy = 0; p.vx = 0; p.vz = 0
+                p.settled = true
+                p.y = effectiveFloor + p.sphereR * (0.8 + Math.random() * 0.4)
+                fillLevel.current = Math.min(BOX_TOP - 0.02, fillLevel.current + FILL_PER_PART)
+              } else {
+                // Ainda deslizando: continua na superfície
+                p.vy = 0
+                p.y  = effectiveFloor + p.sphereR * 0.9
+                p.vx *= 0.88
+                p.vz *= 0.88
+              }
+            }
+          }
+
+          // Paredes da caixa
+          if (Math.abs(p.x) > BOX_HALF) {
+            p.x  = Math.sign(p.x) * BOX_HALF
+            p.vx = -p.vx * 0.10
+            p.vz *= 0.60
+          }
+          if (Math.abs(p.z) > BOX_HALF) {
+            p.z  = Math.sign(p.z) * BOX_HALF
+            p.vz = -p.vz * 0.10
+            p.vx *= 0.60
+          }
+        }
+
+        // Integra ângulo + raio (fases polares)
+        if (p.phase === 'outer' || p.phase === 'inner' || p.phase === 'inlet') {
+          p.angle += p.omega * sdt
+          p.r      = Math.max(0.008, p.r + p.vr * sdt)
+          p.y     += p.vy * sdt
+        }
+      }
+    }
+
+    // ── Limpa partículas mortas ────────────────────────────────────
+    pool.current = pool.current.filter(p => p.alive).slice(0, MAX)
+
+    // ── Renderiza com InstancedMesh ────────────────────────────────
+    const alive = pool.current
+    meshRef.current.count = alive.length
+
+    for (let i = 0; i < alive.length; i++) {
+      const p  = alive[i]
+      const isCart = p.phase === 'overflow_exit' || p.phase === 'underflow_fall'
+      const wx = isCart ? (p.x || 0) : Math.cos(p.angle) * p.r
+      const wz = isCart ? (p.z || 0) : Math.sin(p.angle) * p.r
+
+      // Fade só para partículas com TTL; settled e underflow sem fade
+      const hasTTL = p.ttl !== undefined && !p.settled
+      const fade   = hasTTL ? Math.max(0, 1 - p.age / p.ttl) : 1
+      const sR     = p.sphereR * (hasTTL ? (0.3 + fade * 0.7) : 1)
+
+      dummy.position.set(wx, p.y, wz)
+      dummy.scale.setScalar(sR)
+      dummy.updateMatrix()
+
+      meshRef.current.setMatrixAt(i, dummy.matrix)
+      meshRef.current.setColorAt(i, p.color)
+    }
+
+    meshRef.current.instanceMatrix.needsUpdate = true
+    if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh ref={meshRef} args={[geometry, material, MAX]} castShadow />
+  )
+}

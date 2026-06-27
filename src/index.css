@@ -6,8 +6,8 @@
 
 body {
   font-family: 'Inter', 'Segoe UI', sans-serif;
-  background: #0a0e1a;
-  color: #e2e8f0;
+  background: #f0f4f8;
+  color: #1e293b;
   overflow: hidden;
 }
 
@@ -19,18 +19,13 @@ body {
 }
 
 :root {
-  --color-bg: #0a0e1a;
-  --color-surface: #111827;
-  --color-border: #1e293b;
-  --color-primary: #3b82f6;
-  --color-secondary: #06b6d4;
-  --color-accent: #f59e0b;
-  --color-dust: #d97706;
-  --color-air: #38bdf8;
-  --color-text: #e2e8f0;
-  --color-muted: #64748b;
-}
-
-.leva-c-hwBhMg {
-  background: #111827 !important;
+  --color-bg:       #f0f4f8;
+  --color-surface:  #ffffff;
+  --color-border:   #cbd5e1;
+  --color-primary:  #2563eb;
+  --color-secondary:#0284c7;
+  --color-accent:   #d97706;
+  --color-text:     #1e293b;
+  --color-muted:    #64748b;
+  --color-shadow:   rgba(30,41,59,0.10);
 }
