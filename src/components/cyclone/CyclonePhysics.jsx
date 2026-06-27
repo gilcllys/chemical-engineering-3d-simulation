@@ -144,7 +144,11 @@ const fluidGrid = new Float32Array(FLUID_GRID * FLUID_GRID * FLUID_GRID * 4)
 
 
 // ── Separação posicional entre partículas underflow (anti-overlap) ────────────
-function resolveUnderflowCollisions(pool) {
+function resolveUnderflowCollisions(pool, coneHeight) {
+  const BOX_FLOOR = -(coneHeight) - 2.49
+  const BOX_TOP   = -(coneHeight) - 0.55
+  const BOX_HALF  = 0.87
+
   const parts = pool.filter(p => p.phase === 'underflow_fall')
   const n = parts.length
   if (n < 2) return
@@ -177,6 +181,39 @@ function resolveUnderflowCollisions(pool) {
         a.vx = (a.vx||0) + imp * nx;  a.vy = (a.vy||0) + imp * ny;  a.vz = (a.vz||0) + imp * nz
         b.vx = (b.vx||0) - imp * nx;  b.vy = (b.vy||0) - imp * ny;  b.vz = (b.vz||0) - imp * nz
       }
+    }
+  }
+
+  // ── Clamp de bounds após separação: nenhuma partícula sai da caixa ──────────
+  for (const p of parts) {
+    const sr = p.sphereR
+    // Fundo: empurra para cima se foi abaixo do chão
+    if (p.y < BOX_FLOOR + sr) {
+      p.y = BOX_FLOOR + sr
+      if ((p.vy || 0) < 0) p.vy = Math.abs(p.vy || 0) * 0.05
+    }
+    // Topo da caixa
+    if (p.y > BOX_TOP - sr) {
+      p.y = BOX_TOP - sr
+      if ((p.vy || 0) > 0) p.vy = -(p.vy || 0) * 0.05
+    }
+    // Paredes laterais X
+    if ((p.x || 0) > BOX_HALF - sr) {
+      p.x = BOX_HALF - sr
+      if ((p.vx || 0) > 0) p.vx = -(p.vx || 0) * 0.05
+    }
+    if ((p.x || 0) < -BOX_HALF + sr) {
+      p.x = -BOX_HALF + sr
+      if ((p.vx || 0) < 0) p.vx = Math.abs(p.vx || 0) * 0.05
+    }
+    // Paredes laterais Z
+    if ((p.z || 0) > BOX_HALF - sr) {
+      p.z = BOX_HALF - sr
+      if ((p.vz || 0) > 0) p.vz = -(p.vz || 0) * 0.05
+    }
+    if ((p.z || 0) < -BOX_HALF + sr) {
+      p.z = -BOX_HALF + sr
+      if ((p.vz || 0) < 0) p.vz = Math.abs(p.vz || 0) * 0.05
     }
   }
 }
@@ -662,7 +699,7 @@ export default function CyclonePhysics({ params, isRunning = true }) {
     // ── Simulação de fluido MLS-MPM para partículas underflow ─────────
     simulateFluid(pool.current, dt, coneHeight, fillLevel, FILL_PER_PART)
     // ── Separação anti-overlap entre partículas underflow ────────────
-    resolveUnderflowCollisions(pool.current)
+    resolveUnderflowCollisions(pool.current, coneHeight)
 
     // ── Limpa partículas mortas ────────────────────────────────────
     pool.current = pool.current.filter(p => p.alive).slice(0, MAX)
