@@ -16,8 +16,8 @@
  *  - Clean pipe-jet model for overflow_exit (constrained inside pipe, free above)
  */
 
-import { useRef, useMemo, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 
 // ── Paleta acessível para daltônicos (Paul Tol) ─────────────────────
@@ -80,7 +80,7 @@ function makeActive(params, forceSmall = false) {
     vy: -speed * (0.10 + sizeFactor * 0.12),
     omega: -speed / Math.max(r, 0.04),
     phase: 'outer',
-    sphereR: Math.max(0.018, dp * 0.00078),
+    sphereR: Math.max(0.013, dp * 0.00058),
     color: particleColor(dp),
     alive: true,
   }
@@ -128,7 +128,7 @@ function makeOverflowStream(params) {
 }
 
 // ── Constantes ────────────────────────────────────────────────────────
-const MAX   = 800
+const MAX   = 2500
 const dummy = new THREE.Object3D()
 
 // ── MLS-MPM Fluid Simulation ──────────────────────────────────────────
@@ -381,7 +381,7 @@ export default function CyclonePhysics({ params, isRunning = true }) {
     inletVelocity, particleCount, particleSize,
   } = params
 
-  const maxActive = Math.min(particleCount, 380)
+  const maxActive = Math.min(particleCount, 900)
 
   // Constantes derivadas (mesmas que CycloneModel usa)
   const vortexR   = cylinderRadius * 0.35
@@ -432,26 +432,26 @@ export default function CyclonePhysics({ params, isRunning = true }) {
 
     // ── Spawn de partículas ativas ─────────────────────────────────
     T.spawn += dt
-    const spawnInterval = Math.max(0.025 / (inletVelocity / 15), 0.012)
+    const spawnInterval = Math.max(0.010 / (inletVelocity / 15), 0.005)
     while (T.spawn >= spawnInterval && nActive < maxActive) {
       T.spawn -= spawnInterval
-      pool.current.push(makeActive(params, Math.random() < 0.45))
+      pool.current.push(makeActive(params, Math.random() < 0.55))
       nActive++
     }
     if (T.spawn > spawnInterval) T.spawn = 0
 
     // ── Stream de entrada (sempre visível) ────────────────────────
     T.inlet += dt
-    if (T.inlet >= 0.055 && pool.current.length < MAX - 5) {
+    if (T.inlet >= 0.030 && pool.current.length < MAX - 10) {
       T.inlet = 0
-      for (let k = 0; k < 3; k++) pool.current.push(makeInletStream(params))
+      for (let k = 0; k < 6; k++) pool.current.push(makeInletStream(params))
     }
 
     // ── Stream de saída overflow (partículas leves direto pelo topo) ────
     T.over += dt
-    if (T.over >= 0.035 && pool.current.length < MAX - 8) {
+    if (T.over >= 0.020 && pool.current.length < MAX - 15) {
       T.over = 0
-      const batch = Math.ceil(2 + inletVelocity / 12)
+      const batch = Math.ceil(4 + inletVelocity / 8)
       for (let k = 0; k < batch; k++) pool.current.push(makeOverflowStream(params))
     }
 
@@ -514,7 +514,7 @@ export default function CyclonePhysics({ params, isRunning = true }) {
 
           // Saída pelo apex → caixa coletora
           if (p.y < -coneHeight + 0.20) {
-            if (nUnder < 180 && Math.random() < 0.88) {
+            if (nUnder < 1000000 && Math.random() < 0.99) {
               toCar(p)
               p.phase   = 'underflow_fall'
               p.settled = false
@@ -557,7 +557,7 @@ export default function CyclonePhysics({ params, isRunning = true }) {
 
           // Saída pelo topo → jet vertical
           if (p.y > cylinderHeight - 0.05) {
-            if (nOver < 100 && Math.random() < 0.90) {
+            if (nOver < 350 && Math.random() < 0.92) {
               toCar(p)
               p.phase = 'overflow_exit'
               p.ttl   = 3.8 + Math.random() * 2.0

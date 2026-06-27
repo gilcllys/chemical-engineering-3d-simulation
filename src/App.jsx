@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import CyclonePage from './pages/CyclonePage'
+import CyclonePage   from './pages/CyclonePage'
+import CyclonePage2D from './pages/CyclonePage2D'
 
 const EQUIPMENTS = [
-  { id: 'cyclone',      name: 'Ciclone',             icon: '🌀', status: 'available', description: 'Separador Ciclônico' },
-  { id: 'reactor',      name: 'Reator CSTR',          icon: '⚗️', status: 'coming',    description: 'Em breve' },
-  { id: 'distillation', name: 'Coluna de Destilação', icon: '🏭', status: 'coming',    description: 'Em breve' },
-  { id: 'heatexchanger',name: 'Trocador de Calor',    icon: '🔁', status: 'coming',    description: 'Em breve' },
+  { id: 'cyclone',      name: 'Ciclone 3D',           icon: '🌀', status: 'available', description: 'Separador Ciclônico 3D' },
+  { id: 'cyclone2d',    name: 'Ciclone 2D',            icon: '🌀', status: 'available', description: 'Corte Transversal 2D' },
+  { id: 'reactor',      name: 'Reator CSTR',           icon: '⚗️', status: 'coming',    description: 'Em breve' },
+  { id: 'distillation', name: 'Coluna de Destilação',  icon: '🏭', status: 'coming',    description: 'Em breve' },
+  { id: 'heatexchanger',name: 'Trocador de Calor',     icon: '🔁', status: 'coming',    description: 'Em breve' },
 ]
 
 export default function App() {
@@ -84,6 +86,17 @@ export default function App() {
               style={{ width: '100%', height: '100%' }}
             >
               <CyclonePage />
+            </motion.div>
+          )}
+          {selected === 'cyclone2d' && (
+            <motion.div
+              key="cyclone2d"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{ width: '100%', height: '100%' }}
+            >
+              <CyclonePage2D />
             </motion.div>
           )}
         </AnimatePresence>
