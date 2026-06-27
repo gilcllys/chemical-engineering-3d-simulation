@@ -268,22 +268,22 @@ export default function BatchReactor3D({ isRunning, params }) {
   return (
     <group>
 
-      {/* ══ Vaso — parede de vidro ══════════════════════════════════════════════ */}
-      <mesh castShadow>
+      {/* ══ Vaso — parede de vidro (renderOrder alto = renderiza depois do líquido) */}
+      <mesh castShadow renderOrder={3}>
         <cylinderGeometry args={[1, 1, 3, 56, 1, true]} />
         <meshPhysicalMaterial color="#88ccee" transparent opacity={0.18}
           roughness={0} metalness={0.08} transmission={0.75} side={THREE.DoubleSide} />
       </mesh>
 
       {/* Tampa superior */}
-      <mesh position={[0, 1.5, 0]}>
+      <mesh position={[0, 1.5, 0]} renderOrder={3}>
         <sphereGeometry args={[1, 32, 16, 0, Math.PI*2, 0, Math.PI/2]} />
         <meshPhysicalMaterial color="#88ccee" transparent opacity={0.18}
           roughness={0} metalness={0.08} transmission={0.75} side={THREE.DoubleSide} />
       </mesh>
 
       {/* Tampa inferior */}
-      <mesh position={[0, -1.5, 0]}>
+      <mesh position={[0, -1.5, 0]} renderOrder={3}>
         <sphereGeometry args={[1, 32, 16, 0, Math.PI*2, Math.PI/2, Math.PI/2]} />
         <meshPhysicalMaterial color="#88ccee" transparent opacity={0.18}
           roughness={0} metalness={0.08} transmission={0.75} side={THREE.DoubleSide} />
@@ -351,30 +351,30 @@ export default function BatchReactor3D({ isRunning, params }) {
       </mesh>
 
       {/* ══ VOLUME DO LÍQUIDO ══════════════════════════════════════════════════ */}
-      {/* Corpo principal do líquido (cilindro sólido) */}
-      <mesh ref={liquidRef} position={[0, LIQUID_BOT + LIQUID_H/2, 0]}>
+      {/* Corpo principal do líquido — renderOrder baixo para aparecer antes do vidro */}
+      <mesh ref={liquidRef} position={[0, LIQUID_BOT + LIQUID_H/2, 0]} renderOrder={1}>
         <cylinderGeometry args={[LIQUID_R, LIQUID_R, LIQUID_H, 56, 1]} />
         <meshStandardMaterial
-          color={COL_A} transparent opacity={0.82}
+          color={COL_A}
           roughness={0.12} metalness={0.04}
-          emissive={COL_A} emissiveIntensity={0.18}
-          side={THREE.FrontSide}
+          emissive={COL_A} emissiveIntensity={0.25}
+          side={THREE.DoubleSide}
         />
       </mesh>
 
-      {/* Tampa inferior do líquido (fecha o cilindro) */}
-      <mesh position={[0, LIQUID_BOT, 0]} rotation={[Math.PI/2, 0, 0]}>
+      {/* Tampa inferior do líquido */}
+      <mesh position={[0, LIQUID_BOT, 0]} rotation={[Math.PI/2, 0, 0]} renderOrder={1}>
         <circleGeometry args={[LIQUID_R, 56]} />
-        <meshStandardMaterial color={COL_A} transparent opacity={0.75}
-          roughness={0.15} metalness={0.04} emissive={COL_A} emissiveIntensity={0.15} />
+        <meshStandardMaterial color={COL_A}
+          roughness={0.15} metalness={0.04} emissive={COL_A} emissiveIntensity={0.2} />
       </mesh>
 
       {/* ══ SUPERFÍCIE DO LÍQUIDO (height field animada) ═════════════════════ */}
-      <mesh ref={surfaceRef} position={[0, LIQUID_TOP, 0]} geometry={surfaceGeo}>
+      <mesh ref={surfaceRef} position={[0, LIQUID_TOP, 0]} geometry={surfaceGeo} renderOrder={2}>
         <meshStandardMaterial
-          color={COL_A} transparent opacity={0.92}
-          roughness={0.08} metalness={0.06}
-          emissive={COL_A} emissiveIntensity={0.25}
+          color={COL_A} transparent opacity={0.96}
+          roughness={0.05} metalness={0.08}
+          emissive={COL_A} emissiveIntensity={0.35}
           side={THREE.DoubleSide}
         />
       </mesh>
