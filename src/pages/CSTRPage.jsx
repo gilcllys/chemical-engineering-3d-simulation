@@ -113,7 +113,7 @@ function EquationsDrawer({ k, tau, X, Ca, volume }) {
           />
           <EqCard
             title="Constante Cinética"
-            formula={`k = k₀·exp(−Eₐ/R·(1/T−1/T₀))`}
+            formula={`k = k(T_ref)·exp(−Ea/R·(1/T − 1/T_ref))`}
             value={k.toFixed(4)} unit="s⁻¹" color="#0077BB"
           />
           <EqCard
@@ -128,12 +128,12 @@ function EquationsDrawer({ k, tau, X, Ca, volume }) {
           />
           <EqCard
             title="Equação de Projeto"
-            formula={`V = Cₐ₀·X·Q / (k·(1−X))`}
+            formula={`V = Q·X / (k·(1−X))`}
             value={volume.toFixed(0)} unit="L" color="#EE7733"
           />
         </div>
         <div style={{ padding: '0 16px 8px', display: 'flex', gap: 18, fontSize: 10, color: '#94a3b8', flexWrap: 'wrap' }}>
-          <span>k₀ = {K0} s⁻¹</span>
+          <span>k(T_ref) = {K0} s⁻¹</span>
           <span>Eₐ/R = {EA_R} K</span>
           <span>T_ref = {T_REF} K</span>
           <span>Modelo: CSTR ideal — mistura perfeita, estado estacionário</span>
@@ -188,7 +188,7 @@ function InfoPanel({ k, tau, X, Ca }) {
       </div>
 
       {row('τ = V/Q  (residência)',  tau.toFixed(1), ' s',     '#7c3aed')}
-      {row('k(T) = k₀·e^(−Eₐ/RT)', k.toFixed(4),   ' s⁻¹',  '#0077BB')}
+      {row('k(T) = k(T_ref)·e^(−Ea/R·(1/T−1/Tref))', k.toFixed(4), ' s⁻¹', '#0077BB')}
       {row('X = kτ/(1+kτ)',         (X*100).toFixed(1), ' %', xColor, X * 100)}
       {row('Cₐ = Cₐ₀/(1+kτ)',      Ca.toFixed(3),  ' mol/L', '#CC3311')}
 

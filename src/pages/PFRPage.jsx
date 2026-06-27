@@ -158,12 +158,12 @@ function EquationsPanel({ k, u, tau }) {
           )}
           {card(
             'Taxa de reação (Arrhenius)',
-            `k(T) = k₀ · exp(−Ea/R · (1/T − 1/T_ref))`,
+            `k(T) = k(T_ref) · exp(−Ea/R · (1/T − 1/T_ref))`,
             '#7c3aed',
           )}
         </div>
         <div style={{ padding: '0 16px 8px', fontSize: 10, color: '#94a3b8', display: 'flex', gap: 18, flexWrap: 'wrap' }}>
-          <span>k₀ = {K0} s⁻¹</span>
+          <span>k(T_ref) = {K0} s⁻¹</span>
           <span>Ea/R = {EA_R} K</span>
           <span>T_ref = {T_REF} K</span>
           <span>A_tubo = {(A_TUBE * 1e4).toFixed(2)} cm²</span>

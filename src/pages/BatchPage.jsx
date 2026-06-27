@@ -44,7 +44,7 @@ const EQUATIONS = [
   { sub: 'Taxa de reação (1ª ordem)',  eq: '−rA = k · CA'          },
   { sub: 'Concentração vs. tempo',     eq: 'CA(t) = CA₀ · e^(−kt)' },
   { sub: 'Conversão',                  eq: 'X = 1 − CA / CA₀'      },
-  { sub: 'Arrhenius',                  eq: 'k(T) = k₀ · e^(−Ea/RT)'},
+  { sub: 'Arrhenius (forma modificada)',eq: 'k(T) = k(T_ref) · e^(−Ea/R·(1/T − 1/T_ref))'},
 ]
 
 // ─────────────────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ export default function BatchPage() {
             color       : '#64748b',
             lineHeight  : 1.6,
           }}>
-            k₀ = 0.1 s⁻¹ &nbsp;|&nbsp; Ea/R = 5 000 K &nbsp;|&nbsp; T<sub>ref</sub> = 350 K
+            k(T<sub>ref</sub>) = 0.1 s⁻¹ &nbsp;|&nbsp; Ea/R = 5 000 K &nbsp;|&nbsp; T<sub>ref</sub> = 350 K
           </div>
         </div>
 
