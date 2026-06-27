@@ -279,6 +279,42 @@ function resolveCollisions(pool) {
         }
       }
     }
+
+    // ── Clamp de bounds após cada iteração: garante que nenhuma partícula
+    //    saia dos limites da caixa ou do cone por causa da separação ──────────
+    for (let i = 0; i < n; i++) {
+      const p = active[i]
+      const r = p.r
+
+      if (p.phase === 'box') {
+        // Fundo
+        if (p.y > BOX_BOT - r) {
+          p.y = BOX_BOT - r
+          if (p.vy > 0) p.vy = -Math.abs(p.vy) * 0.05
+        }
+        // Topo da caixa
+        if (p.y < BOX_TOP + r) {
+          p.y = BOX_TOP + r
+          if (p.vy < 0) p.vy = Math.abs(p.vy) * 0.05
+        }
+        // Parede direita
+        if (p.x > CX + BOX_W - r) {
+          p.x = CX + BOX_W - r
+          if (p.vx > 0) p.vx = -Math.abs(p.vx) * 0.05
+        }
+        // Parede esquerda
+        if (p.x < CX - BOX_W + r) {
+          p.x = CX - BOX_W + r
+          if (p.vx < 0) p.vx = Math.abs(p.vx) * 0.05
+        }
+      } else if (p.phase === 'cone') {
+        // Mantém dentro do cone usando interiorHalfW
+        const hw = interiorHalfW(p.y) - r
+        if (p.x > CX + hw) { p.x = CX + hw; if (p.vx > 0) p.vx = -Math.abs(p.vx) * 0.3 }
+        if (p.x < CX - hw) { p.x = CX - hw; if (p.vx < 0) p.vx =  Math.abs(p.vx) * 0.3 }
+        if (p.y < CYL_BOT + r) { p.y = CYL_BOT + r; if (p.vy < 0) p.vy = Math.abs(p.vy) * 0.1 }
+      }
+    }
   }
 }
 
