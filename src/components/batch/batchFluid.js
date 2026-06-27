@@ -22,10 +22,10 @@ const GRID  = 28              // 28³ grid cells
 const GRID2 = GRID * GRID     // cells per layer (pre-computed)
 
 // ── Physics constants ─────────────────────────────────────────────────────────
-const STIFFNESS    = 15.0
-const REST_DENSITY =  4.0     // slightly higher → denser packing (liquid-like)
+const STIFFNESS    = 35.0
+const REST_DENSITY =  8.0     // high density → tight liquid packing
 const VISCOSITY    =  0.12
-const GRAVITY      = -6.0 / GRID   // in grid-space
+const GRAVITY      = -20.0 / GRID  // strong gravity → liquid pools at bottom
 const PARTICLE_MASS =  1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
