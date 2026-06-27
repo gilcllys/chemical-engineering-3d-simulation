@@ -253,7 +253,7 @@ export default function BatchReactor3D({ isRunning, params }) {
         frustumCulled={false}
       >
         <sphereGeometry args={[0.055, 8, 8]} />
-        <meshStandardMaterial vertexColors roughness={0.55} metalness={0.12} />
+        <meshStandardMaterial vertexColors roughness={0.4} metalness={0.05} />
       </instancedMesh>
 
       {/* ══ HTML live-data overlay ════════════════════════════════════ */}

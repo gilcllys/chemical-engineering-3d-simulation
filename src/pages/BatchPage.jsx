@@ -83,10 +83,12 @@ export default function BatchPage() {
           <Suspense fallback={null}>
 
             {/* Lighting */}
-            <ambientLight intensity={1.0} />
-            <directionalLight position={[5, 10, 5]}   intensity={1.6} castShadow />
+            <ambientLight intensity={2.2} />
+            <directionalLight position={[5, 10, 5]}   intensity={2.2} castShadow />
             <directionalLight position={[-4, 6, -4]}  intensity={0.6} color="#bfdbfe" />
             <pointLight       position={[0, -3, 0]}   intensity={0.5} color="#f59e0b" />
+            <pointLight       position={[0,  0, 0]}   intensity={1.8} color="#ffffff" />
+            <pointLight       position={[0, -1, 0]}   intensity={1.2} color="#dbeafe" />
 
             {/* Floor grid */}
             <Grid
