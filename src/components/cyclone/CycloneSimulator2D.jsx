@@ -240,6 +240,48 @@ function stepParticle(p, dt) {
   }
 }
 
+
+// ── Colisão partícula-partícula (separação posicional + impulso) ─────────────
+const RELAX_ITERS = 3
+function resolveCollisions(pool) {
+  // Apenas partículas que já estão na caixa ou em queda no cone
+  const active = pool.filter(p => p.phase === 'box' || p.phase === 'cone')
+  const n = active.length
+  if (n < 2) return
+
+  for (let iter = 0; iter < RELAX_ITERS; iter++) {
+    for (let i = 0; i < n; i++) {
+      const a = active[i]
+      for (let j = i + 1; j < n; j++) {
+        const b = active[j]
+        const dx = b.x - a.x
+        const dy = b.y - a.y
+        const minDist = a.r + b.r
+        if (Math.abs(dx) > minDist || Math.abs(dy) > minDist) continue  // early-out
+        const dist2 = dx * dx + dy * dy
+        if (dist2 >= minDist * minDist || dist2 < 0.0001) continue
+
+        const dist    = Math.sqrt(dist2)
+        const overlap = (minDist - dist) * 0.52
+        const nx = dx / dist
+        const ny = dy / dist
+
+        // Empurra igualmente nos dois sentidos
+        a.x -= nx * overlap;  a.y -= ny * overlap
+        b.x += nx * overlap;  b.y += ny * overlap
+
+        // Impulso de velocidade (restituição baixa = comportamento de areia)
+        const relVn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny
+        if (relVn < 0) {
+          const imp = relVn * 0.55
+          a.vx += imp * nx;  a.vy += imp * ny
+          b.vx -= imp * nx;  b.vy -= imp * ny
+        }
+      }
+    }
+  }
+}
+
 // ── Renderização ─────────────────────────────────────────────────────────────
 function drawStructure(ctx) {
   ctx.lineWidth   = 5
@@ -332,6 +374,8 @@ export default function CycloneSimulator2D({ isRunning = true }) {
       if (isRunningRef.current) {
         // Física
         for (const p of poolRef.current) stepParticle(p, dt)
+        // Colisão entre partículas
+        resolveCollisions(poolRef.current)
         // Remove partículas mortas
         poolRef.current = poolRef.current.filter(p => p.alive)
       }

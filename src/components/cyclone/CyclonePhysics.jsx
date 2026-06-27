@@ -142,6 +142,45 @@ const FLUID_GRAV   = -96.0 / FLUID_GRID
 // Layout per cell: [vx, vy, vz, mass]
 const fluidGrid = new Float32Array(FLUID_GRID * FLUID_GRID * FLUID_GRID * 4)
 
+
+// ── Separação posicional entre partículas underflow (anti-overlap) ────────────
+function resolveUnderflowCollisions(pool) {
+  const parts = pool.filter(p => p.phase === 'underflow_fall')
+  const n = parts.length
+  if (n < 2) return
+
+  for (let i = 0; i < n; i++) {
+    const a = parts[i]
+    const ax = a.x || 0, ay = a.y, az = a.z || 0
+    for (let j = i + 1; j < n; j++) {
+      const b     = parts[j]
+      const dx    = (b.x || 0) - ax
+      const dy    = b.y - ay
+      const dz    = (b.z || 0) - az
+      const minD  = a.sphereR + b.sphereR
+      if (Math.abs(dx) > minD || Math.abs(dy) > minD || Math.abs(dz) > minD) continue
+      const dist2 = dx * dx + dy * dy + dz * dz
+      if (dist2 >= minD * minD || dist2 < 1e-8) continue
+
+      const dist    = Math.sqrt(dist2)
+      const overlap = (minD - dist) * 0.52
+      const inv     = 1 / dist
+      const nx = dx * inv, ny = dy * inv, nz = dz * inv
+
+      a.x = ax - nx * overlap;  a.y -= ny * overlap;  a.z = az - nz * overlap
+      b.x = (b.x||0) + nx * overlap;  b.y += ny * overlap;  b.z = (b.z||0) + nz * overlap
+
+      // Impulso suave (velocidades em grid-space)
+      const relVn = ((b.vx||0)-(a.vx||0))*nx + ((b.vy||0)-(a.vy||0))*ny + ((b.vz||0)-(a.vz||0))*nz
+      if (relVn < 0) {
+        const imp = relVn * 0.4
+        a.vx = (a.vx||0) + imp * nx;  a.vy = (a.vy||0) + imp * ny;  a.vz = (a.vz||0) + imp * nz
+        b.vx = (b.vx||0) - imp * nx;  b.vy = (b.vy||0) - imp * ny;  b.vz = (b.vz||0) - imp * nz
+      }
+    }
+  }
+}
+
 /**
  * simulateFluid — one MLS-MPM step for all active underflow_fall particles.
  * Runs 5 passes: clear → P2G-1 (momentum) → P2G-2 (stress) → grid update → G2P.
@@ -622,6 +661,8 @@ export default function CyclonePhysics({ params, isRunning = true }) {
 
     // ── Simulação de fluido MLS-MPM para partículas underflow ─────────
     simulateFluid(pool.current, dt, coneHeight, fillLevel, FILL_PER_PART)
+    // ── Separação anti-overlap entre partículas underflow ────────────
+    resolveUnderflowCollisions(pool.current)
 
     // ── Limpa partículas mortas ────────────────────────────────────
     pool.current = pool.current.filter(p => p.alive).slice(0, MAX)
