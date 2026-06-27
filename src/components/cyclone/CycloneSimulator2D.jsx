@@ -328,7 +328,7 @@ function drawStructure(ctx) {
   ctx.fillStyle = '#1e293b'
   ctx.font      = 'bold 11px sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText('↑ Saída (Overflow)', CX, OUTLET_TOP - 3)
+  ctx.fillText('↑ Saída (Overflow)', CX, OUTLET_TOP + 14)
   ctx.textAlign = 'left'
   ctx.fillText('→ Entrada', CX + CYL_W + 8, INLET_Y - INLET_W - 5)
   ctx.textAlign = 'center'
