@@ -19,7 +19,9 @@
     "matter-js": "^0.20.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "three": "^0.185.0"
+    "three": "^0.185.0",
+    "webgpu-radix-sort": "^1.0.7",
+    "wgpu-matrix": "^3.4.2"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",
