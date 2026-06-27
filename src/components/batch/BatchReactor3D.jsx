@@ -26,10 +26,10 @@ import { useRef, useMemo, useEffect } from 'react'
 import { useFrame }                   from '@react-three/fiber'
 import { Html }                       from '@react-three/drei'
 import * as THREE                     from 'three'
-import { createFluidState, stepFluid } from './batchFluid.js'
+import { createFluidState, stepFluid, SPHERE_R as FLUID_SR, Y_FILL } from './batchFluid.js'
 
 // ── Constants ─────────────────────────────────────────────────────────
-const PARTICLE_COUNT = 500
+const PARTICLE_COUNT = 550
 const K0             = 0.1      // pre-exponential factor  (1/s)
 const EA_R           = 5000     // Ea / R                  (K)
 const T_REF          = 350      // reference temperature   (K)
@@ -252,7 +252,7 @@ export default function BatchReactor3D({ isRunning, params }) {
         args={[undefined, undefined, PARTICLE_COUNT]}
         frustumCulled={false}
       >
-        <sphereGeometry args={[0.055, 8, 8]} />
+        <sphereGeometry args={[0.072, 10, 10]} />
         <meshStandardMaterial vertexColors roughness={0.4} metalness={0.05} />
       </instancedMesh>
 
