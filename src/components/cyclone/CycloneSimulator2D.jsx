@@ -49,6 +49,7 @@ function makeParticle() {
     r, dp, isHeavy,
     color: dpColor(dp),
     phase: 'entering',   // entering | outer | inner | cone | box | outlet
+    settled: false,
     osc: Math.random() * Math.PI * 2,  // fase da oscilação da espiral
     alive: true,
   }
@@ -200,25 +201,40 @@ function stepParticle(p, dt) {
   // FASE: box — acumula na caixa coletora com gravidade e fricção
   // ──────────────────────────────────────────────────────────────────────────
   if (p.phase === 'box') {
+    // Partícula já assentada: apenas mantém bounds, não integra física
+    if (p.settled) {
+      if (p.y > BOX_BOT - r) p.y = BOX_BOT - r
+      if (p.x > CX + BOX_W - r) p.x = CX + BOX_W - r
+      if (p.x < CX - BOX_W + r) p.x = CX - BOX_W + r
+      return
+    }
+
     p.vy += GRAVITY * dt
     p.x  += p.vx * dt
     p.y  += p.vy * dt
 
-    // Fundo
+    // Fundo — amortecimento forte no impacto
     if (p.y > BOX_BOT - r) {
       p.y  = BOX_BOT - r
-      p.vy = -Math.abs(p.vy) * 0.05
-      p.vx *= 0.88  // desliza bastante antes de parar
+      p.vy = -Math.abs(p.vy) * 0.04
+      p.vx *= 0.75
     }
-    // Paredes laterais
-    if (p.x > CX + BOX_W - r) { p.x = CX + BOX_W - r; p.vx = -Math.abs(p.vx) * BOUNCE }
-    if (p.x < CX - BOX_W + r) { p.x = CX - BOX_W + r; p.vx =  Math.abs(p.vx) * BOUNCE }
-    // Topo da caixa (não deixa escapar para cima)
-    if (p.y < BOX_TOP + r) { p.y = BOX_TOP + r; p.vy = Math.abs(p.vy) * 0.1 }
+    // Paredes laterais — quase sem ricochete
+    if (p.x > CX + BOX_W - r) { p.x = CX + BOX_W - r; p.vx = -Math.abs(p.vx) * 0.04 }
+    if (p.x < CX - BOX_W + r) { p.x = CX - BOX_W + r; p.vx =  Math.abs(p.vx) * 0.04 }
+    // Topo da caixa
+    if (p.y < BOX_TOP + r) { p.y = BOX_TOP + r; p.vy = Math.abs(p.vy) * 0.04 }
 
-    // Amortecimento geral
-    p.vx *= 1 - 0.6 * dt
-    p.vy *= 1 - 0.2 * dt
+    // Amortecimento alto — comportamento de pó/areia (não de borracha)
+    p.vx *= 1 - 4.5 * dt
+    p.vy *= 1 - 1.8 * dt
+
+    // Assentamento: velocidade muito baixa e próximo de uma superfície
+    const speed2 = p.vx * p.vx + p.vy * p.vy
+    if (speed2 < 18 * 18) {
+      p.vx = 0; p.vy = 0
+      p.settled = true
+    }
     return
   }
 
@@ -254,6 +270,7 @@ function resolveCollisions(pool) {
       const a = active[i]
       for (let j = i + 1; j < n; j++) {
         const b = active[j]
+        if (a.settled && b.settled) continue  // ambas assentadas: sem separação necessária
         const dx = b.x - a.x
         const dy = b.y - a.y
         const minDist = a.r + b.r
@@ -273,7 +290,7 @@ function resolveCollisions(pool) {
         // Impulso de velocidade (restituição baixa = comportamento de areia)
         const relVn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny
         if (relVn < 0) {
-          const imp = relVn * 0.55
+          const imp = relVn * 0.12
           a.vx += imp * nx;  a.vy += imp * ny
           b.vx -= imp * nx;  b.vy -= imp * ny
         }
