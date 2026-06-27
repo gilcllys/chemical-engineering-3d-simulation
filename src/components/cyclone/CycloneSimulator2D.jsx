@@ -190,8 +190,8 @@ function stepParticle(p, dt) {
     if (p.y > CONE_BOT) {
       p.phase = 'box'
       p.y = BOX_TOP + r + 2
-      p.vy = Math.max(p.vy * 0.6, 40)
-      p.vx = (Math.random() - 0.5) * 35
+      p.vy = Math.max(p.vy * 0.55, 50)
+      p.vx = (Math.random() - 0.5) * (BOX_W * 1.4)
     }
     return
   }
@@ -207,8 +207,8 @@ function stepParticle(p, dt) {
     // Fundo
     if (p.y > BOX_BOT - r) {
       p.y  = BOX_BOT - r
-      p.vy = -Math.abs(p.vy) * 0.06
-      p.vx *= FLOOR_FRIC
+      p.vy = -Math.abs(p.vy) * 0.05
+      p.vx *= 0.88  // desliza bastante antes de parar
     }
     // Paredes laterais
     if (p.x > CX + BOX_W - r) { p.x = CX + BOX_W - r; p.vx = -Math.abs(p.vx) * BOUNCE }
@@ -217,8 +217,8 @@ function stepParticle(p, dt) {
     if (p.y < BOX_TOP + r) { p.y = BOX_TOP + r; p.vy = Math.abs(p.vy) * 0.1 }
 
     // Amortecimento geral
-    p.vx *= 1 - 1.5 * dt
-    p.vy *= 1 - 0.3 * dt
+    p.vx *= 1 - 0.6 * dt
+    p.vy *= 1 - 0.2 * dt
     return
   }
 
