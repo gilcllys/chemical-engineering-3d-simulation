@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import CyclonePage   from './pages/CyclonePage'
+import CyclonePage        from './pages/CyclonePage'
 import CyclonePage2D from './pages/CyclonePage2D'
 import BatchPage     from './pages/BatchPage'
 import BatchPage2D   from './pages/BatchPage2D'
@@ -17,8 +17,8 @@ const GROUPS = [
     icon: '🌀',
     description: 'Separador Ciclônico',
     items: [
-      { id: 'cyclone',   label: 'Vista 3D', badge: '3D' },
-      { id: 'cyclone2d', label: 'Vista 2D', badge: '2D' },
+      { id: 'cyclone',     label: 'Vista 3D', badge: '3D' },
+      { id: 'cyclone2d',   label: 'Vista 2D', badge: '2D' },
     ],
   },
   {
@@ -55,8 +55,8 @@ const GROUPS = [
 
 // ── Page renderer map ──────────────────────────────────────────────────────────
 const PAGE_MAP = {
-  cyclone:   <CyclonePage   />,
-  cyclone2d: <CyclonePage2D />,
+  cyclone:     <CyclonePage   />,
+  'cyclone2d': <CyclonePage2D />,
   batch:     <BatchPage     />,
   batch2d:   <BatchPage2D   />,
   cstr:      <CSTRPage      />,
@@ -67,11 +67,19 @@ const PAGE_MAP = {
 
 // ── Badge component ────────────────────────────────────────────────────────────
 function Badge({ label, active }) {
-  const is3D = label === '3D'
-  const bg   = active
-    ? (is3D ? '#2563eb' : '#16a34a')
-    : (is3D ? '#bfdbfe' : '#bbf7d0')
-  const color = active ? '#fff' : (is3D ? '#1d4ed8' : '#15803d')
+  const is3D  = label === '3D'
+  const isGPU = label === 'GPU'
+  let bg, color
+  if (isGPU) {
+    bg    = active ? '#7c3aed' : '#ede9fe'
+    color = active ? '#fff'    : '#6d28d9'
+  } else if (is3D) {
+    bg    = active ? '#2563eb' : '#bfdbfe'
+    color = active ? '#fff'    : '#1d4ed8'
+  } else {
+    bg    = active ? '#16a34a' : '#bbf7d0'
+    color = active ? '#fff'    : '#15803d'
+  }
   return (
     <span style={{
       fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
