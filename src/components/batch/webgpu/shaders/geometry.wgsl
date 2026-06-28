@@ -1,10 +1,12 @@
 struct Uniforms {
-    projection: mat4x4f,
-    view: mat4x4f,
-    model: mat4x4f,
-    color: vec4f,
-    cameraPos: vec3f,
-    isGlass: u32,
+    projection: mat4x4f,   // offset   0, size 64
+    view: mat4x4f,         // offset  64, size 64
+    model: mat4x4f,        // offset 128, size 64
+    color: vec4f,          // offset 192, size 16
+    cameraPos: vec3f,      // offset 208, size 12
+    isGlass: u32,          // offset 220, size  4
+    temperature: f32,      // offset 224, size  4  (jacket °C 25–100)
+    // implicit 12 bytes padding → struct total = 240 bytes
 }
 
 struct VertexInput {
@@ -42,14 +44,17 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
     let H        = normalize(L + V);
     let spec     = pow(max(0.0, dot(N, H)), 80.0);
 
+    // Temperature ramp shared by both branches (t=0 at 25°C, t=1 at 100°C)
+    let t = clamp((uni.temperature - 25.0) / 75.0, 0.0, 1.0);
+
     if (uni.isGlass == 1u) {
         // Glass: Fresnel rim + strong specular + very low base alpha
         let NdotV   = abs(dot(N, V));
         let fresnel = pow(1.0 - NdotV, 4.0);          // sharp rim
         let rim     = fresnel * 0.65;                   // rim highlight intensity
 
-        // Tinted glass — pale blue-white
-        let glassBase  = vec3f(0.82, 0.92, 1.00);
+        // At high jacket temperature, glass rim gets a subtle warm tint
+        let glassBase  = mix(vec3f(0.82, 0.92, 1.00), vec3f(1.0, 0.6, 0.3), t * 0.3);
         let glassLight = glassBase * (0.08 + diffuse * 0.25 + diffuse2) + spec * 0.90;
 
         // Alpha: near-transparent on face, opaque on rim
@@ -57,9 +62,13 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 
         return vec4f(glassLight + rim * vec3f(0.9, 0.95, 1.0), alpha);
     } else {
-        // Opaque metal / jacket
-        let metalColor = uni.color.rgb;
-        let lit = metalColor * (0.18 + diffuse * 0.75 + diffuse2) + spec * 0.20;
+        // Jacket: temperature-based color gradient
+        let coldColor   = vec3f(0.20, 0.45, 0.80);  // cool blue  (cold water)
+        let warmColor   = vec3f(1.00, 0.45, 0.05);  // orange-red (hot steam/oil)
+        let jacketColor = mix(coldColor, warmColor, t);
+        // Slight emissive glow that grows with temperature
+        let emissive = jacketColor * t * 0.4;
+        let lit = jacketColor * (0.18 + diffuse * 0.75 + diffuse2) + spec * 0.20 + emissive;
         return vec4f(lit, 1.0);
     }
 }

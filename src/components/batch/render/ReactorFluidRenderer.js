@@ -27,10 +27,10 @@ export class ReactorFluidRenderer {
     this._gaussianModule     = device.createShaderModule({ code: gaussianShader })
     this._foamModule         = device.createShaderModule({ code: foamShader })
 
-    // Foam uniform buffer: 2×mat4x4f (128 bytes) + 4×f32 (16 bytes) = 144 bytes
+    // Foam uniform buffer: 2×mat4x4f (128 bytes) + 8×f32 (32 bytes) = 160 bytes
     this._foamUniformBuffer = device.createBuffer({
       label: 'foam uniforms',
-      size:  144,
+      size:  160,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
 
@@ -461,25 +461,30 @@ export class ReactorFluidRenderer {
     }
 
     // ── 14. Foam sprite pass — soft white billboards over the fluid ───────
-    // Only writes pixels when speed > foam_threshold (computed from agitation).
-    // Uses alpha-blending so low-alpha foam doesn't whiteout the fluid colour.
+    // Position-based foam: only visible at the vortex funnel (parabolic cone)
+    // and at the surface ring near the reactor wall. Alpha is zero when
+    // foamIntensity=0 (no agitation) so foam fully disappears at rest.
     {
-      // Derive threshold/max from current agitation: at rest threshold is very
-      // high (nothing visible); at full speed threshold drops to ~0.1 so most
-      // fast-moving particles produce foam.
-      const foamSpeed     = this._agitationSpeed
-      const foamThreshold = Math.max(0.05, 0.8 - foamSpeed * 0.7)   // 0.8 → 0.1
-      const foamMaxSpeed  = foamThreshold + 0.5
-      const foamSize      = 0.06   // world-space billboard half-size (~60 % of particle diameter)
+      const foamIntensity   = this._agitationSpeed          // 0–1 smoothed agitation
+      const foamSize        = 0.08
+      const SURFACE_Y       = -0.10                         // liquid fill level
+      const REACTOR_R       = 0.87                          // inner reactor radius
+      const vortexDepth     = foamIntensity * 0.18          // max 0.18 m funnel depth
+      const funnelThickness = 0.08                          // ±0.08 m band around cone
+      const ringWidth       = 0.18                          // outer 0.18 m wall ring
 
-      // Layout: [proj 16 f32][view 16 f32][size, threshold, max, pad]  = 36 f32 = 144 bytes
-      const foamData = new Float32Array(36)
+      // Layout: [proj 16][view 16][foamSize, foamIntensity, surfaceY, reactorR, vortexDepth, funnelThickness, ringWidth, pad] = 40 f32 = 160 bytes
+      const foamData = new Float32Array(40)
       foamData.set(projection, 0)
       foamData.set(view,       16)
       foamData[32] = foamSize
-      foamData[33] = foamThreshold
-      foamData[34] = foamMaxSpeed
-      foamData[35] = 0
+      foamData[33] = foamIntensity
+      foamData[34] = SURFACE_Y
+      foamData[35] = REACTOR_R
+      foamData[36] = vortexDepth
+      foamData[37] = funnelThickness
+      foamData[38] = ringWidth
+      foamData[39] = 0
       this.device.queue.writeBuffer(this._foamUniformBuffer, 0, foamData)
 
       const pass = commandEncoder.beginRenderPass({

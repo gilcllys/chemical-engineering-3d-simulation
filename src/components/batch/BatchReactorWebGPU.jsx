@@ -33,17 +33,21 @@ function clamp(value, min, max) {
 
 function createSphereUniformViews(buffer) {
   return {
-    texelSize: new Float32Array(buffer, 0, 2),
-    sphereSize: new Float32Array(buffer, 8, 2),
-    invProjection: new Float32Array(buffer, 16, 16),
-    projection: new Float32Array(buffer, 80, 16),
-    view: new Float32Array(buffer, 144, 16),
-    invView: new Float32Array(buffer, 208, 16),
+    texelSize:     new Float32Array(buffer, 0,   2),
+    sphereSize:    new Float32Array(buffer, 8,   2),
+    invProjection: new Float32Array(buffer, 16,  16),
+    projection:    new Float32Array(buffer, 80,  16),
+    view:          new Float32Array(buffer, 144, 16),
+    invView:       new Float32Array(buffer, 208, 16),
+    // New fields at offset 272 (288-byte buffer)
+    colorMode:     new Uint32Array (buffer, 272, 1),
+    temperature:   new Float32Array(buffer, 276, 1),
+    mixedness:     new Float32Array(buffer, 280, 1),
   }
 }
 
-function writeGeometryUniform(device, buffer, projection, view, model, color, cameraPos, isGlass) {
-  const data = new ArrayBuffer(224)
+function writeGeometryUniform(device, buffer, projection, view, model, color, cameraPos, isGlass, temperature = 25) {
+  const data = new ArrayBuffer(240)
   const f32 = new Float32Array(data)
   const u32 = new Uint32Array(data)
   f32.set(projection, 0)
@@ -52,6 +56,7 @@ function writeGeometryUniform(device, buffer, projection, view, model, color, ca
   f32.set(color, 48)
   f32.set(cameraPos, 52)
   u32[55] = isGlass ? 1 : 0
+  f32[56] = temperature          // offset 224 = index 56 × 4 bytes
   device.queue.writeBuffer(buffer, 0, data)
 }
 
@@ -201,12 +206,16 @@ function buildCylinderWallData(radius, bottom, top, segments, inward = false) {
   })
 }
 
-export default function BatchReactorWebGPU({ isRunning, params, onKineticsUpdate, showFluid = false }) {
+export default function BatchReactorWebGPU({ isRunning, params, onKineticsUpdate, showFluid = false, temperature = 25, colorMode = 0, onMixingUpdate }) {
   const canvasRef = useRef(null)
   const paramsRef = useRef(params)
   const isRunningRef = useRef(isRunning)
   const onKineticsUpdateRef = useRef(onKineticsUpdate)
   const showFluidRef = useRef(showFluid)
+  const temperatureRef = useRef(temperature)
+  const colorModeRef = useRef(colorMode)
+  const mixednessRef = useRef(0)
+  const onMixingUpdateRef = useRef(onMixingUpdate)
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -224,6 +233,18 @@ export default function BatchReactorWebGPU({ isRunning, params, onKineticsUpdate
   useEffect(() => {
     showFluidRef.current = showFluid
   }, [showFluid])
+
+  useEffect(() => {
+    temperatureRef.current = temperature
+  }, [temperature])
+
+  useEffect(() => {
+    colorModeRef.current = colorMode
+  }, [colorMode])
+
+  useEffect(() => {
+    onMixingUpdateRef.current = onMixingUpdate
+  }, [onMixingUpdate])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -275,7 +296,7 @@ export default function BatchReactorWebGPU({ isRunning, params, onKineticsUpdate
         const sphereModule = device.createShaderModule({ code: sphereShader })
         const geometryModule = device.createShaderModule({ code: geometryShader })
 
-        const sphereUniformData = new ArrayBuffer(272)
+        const sphereUniformData = new ArrayBuffer(288)
         const sphereUniformViews = createSphereUniformViews(sphereUniformData)
         const sphereUniformBuffer = device.createBuffer({
           size: sphereUniformData.byteLength,
@@ -291,7 +312,7 @@ export default function BatchReactorWebGPU({ isRunning, params, onKineticsUpdate
         )
 
         const geometryUniformLayout = {
-          size: 224,
+          size: 240,
           usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         }
         const impellerUniformBuffer = device.createBuffer(geometryUniformLayout)
@@ -459,6 +480,9 @@ export default function BatchReactorWebGPU({ isRunning, params, onKineticsUpdate
         let agitAngle = 0
         let simTime = 0
         let smoothedSpeed = 0
+        // Track last Ca0 and T so we can reset simTime when they change
+        let lastCa0 = null
+        let lastT   = null
         // Matrices persisted so the foam pass can use them each frame
         let lastProjection = new Float32Array(16)
         let lastView       = new Float32Array(16)
@@ -483,15 +507,20 @@ export default function BatchReactorWebGPU({ isRunning, params, onKineticsUpdate
           sphereUniformViews.projection.set(projection)
           sphereUniformViews.view.set(view)
           sphereUniformViews.invView.set(mat4.inverse(view))
+          // New per-frame fields
+          sphereUniformViews.colorMode[0]   = colorModeRef.current
+          sphereUniformViews.temperature[0] = temperatureRef.current
+          sphereUniformViews.mixedness[0]   = mixednessRef.current
           device.queue.writeBuffer(sphereUniformBuffer, 0, sphereUniformData)
 
           const impellerModel = mat4.identity()
           mat4.rotateY(impellerModel, agitAngle, impellerModel)
           const identity = mat4.identity()
 
-          writeGeometryUniform(device, impellerUniformBuffer, projection, view, impellerModel, [0.28, 0.33, 0.4, 1], eye, false)
-          writeGeometryUniform(device, jacketUniformBuffer, projection, view, identity, [0.93, 0.47, 0.2, 1], eye, false)
-          writeGeometryUniform(device, glassUniformBuffer, projection, view, identity, [0.78, 0.88, 0.98, 1], eye, true)
+          const jacketTemp = temperatureRef.current
+          writeGeometryUniform(device, impellerUniformBuffer, projection, view, impellerModel, [0.28, 0.33, 0.4, 1], eye, false, jacketTemp)
+          writeGeometryUniform(device, jacketUniformBuffer,   projection, view, identity,      [0.93, 0.47, 0.2, 1], eye, false, jacketTemp)
+          writeGeometryUniform(device, glassUniformBuffer,    projection, view, identity,      [0.78, 0.88, 0.98, 1], eye, true,  jacketTemp)
         }
 
         const frame = timestamp => {
@@ -505,18 +534,35 @@ export default function BatchReactorWebGPU({ isRunning, params, onKineticsUpdate
           const lerpRate = 1.0 - Math.pow(0.80, dt * 60)
           smoothedSpeed += (targetSpeed - smoothedSpeed) * lerpRate
 
+          const T   = paramsRef.current.temperature || 350
+          const Ca0 = paramsRef.current.initialConc || 1.0
+
+          // Reset reaction clock when initial conditions change
+          if (lastCa0 !== null && (Ca0 !== lastCa0 || T !== lastT)) {
+            simTime = 0
+            mixednessRef.current = 0
+          }
+          lastCa0 = Ca0
+          lastT   = T
+
           if (isRunningRef.current) {
             agitAngle += smoothedSpeed * dt * 2
-            simTime += dt * 60
+            // Simulation time scale: 1 real second = 8 sim seconds
+            // Half-life at 350K (k≈0.0052/s) ≈ t½/8 ≈ 17s real time — visible
+            simTime += dt * 8
+
+            // ── Feature 4: mixing index (exponential approach to 1) ──────────
+            const mixRate = smoothedSpeed * 0.12
+            mixednessRef.current += mixRate * dt * (1 - mixednessRef.current)
+            mixednessRef.current = Math.min(mixednessRef.current, 1.0)
+            onMixingUpdateRef.current?.(mixednessRef.current)
           }
 
           sph.updateImpeller(smoothedSpeed, isRunningRef.current)
 
-          const T = paramsRef.current.temperature || 350
-          const k = 0.1 * Math.exp(-5000 * (1 / T - 1 / 350))
-          const Ca0 = paramsRef.current.initialConc || 1.0
+          const k  = 0.1 * Math.exp(-5000 * (1 / T - 1 / 350))
           const Ca = Ca0 * Math.exp(-k * simTime)
-          const X = 1 - Ca / Ca0
+          const X  = 1 - Ca / Ca0
           onKineticsUpdateRef.current?.({
             Ca: Math.max(0, Ca),
             X: clamp(X, 0, 1),

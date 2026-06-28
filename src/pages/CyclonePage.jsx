@@ -107,10 +107,10 @@ export default function CyclonePage() {
 
         {/* ── Badge estático: Coletor de Pó ────────────────────── */}
         <div style={{
-          position: 'absolute',
-          bottom: 24,
+          position: 'fixed',
+          top: 12,
           right: 20,
-          zIndex: 100,
+          zIndex: 1000,
           display: 'flex',
           flexDirection: 'column',
           gap: 6,
@@ -145,19 +145,19 @@ export default function CyclonePage() {
 
         {/* ── Botões de Controle da Simulação ──────────────────── */}
         <div style={{
-          position: 'absolute',
-          bottom: 24,
+          position: 'fixed',
+          top: 12,
           left: '50%',
           transform: 'translateX(-50%)',
           display: 'flex',
           gap: 10,
-          zIndex: 100,
-          background: 'rgba(255,255,255,0.92)',
+          zIndex: 1000,
+          background: 'rgba(255,255,255,0.95)',
           borderRadius: 18,
           padding: '10px 18px',
           boxShadow: '0 4px 24px rgba(0,0,0,0.14)',
           border: '1px solid rgba(0,0,0,0.08)',
-          backdropFilter: 'blur(8px)',
+          backdropFilter: 'blur(10px)',
         }}>
           {/* Iniciar */}
           <button
